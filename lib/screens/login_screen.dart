@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'signup_screen.dart'; // Menghubungkan terus fail SignUp ke dalam skrin Login
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dashboard_screen.dart'; 
+import 'signup_screen.dart'; 
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -9,134 +11,264 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // GlobalKey untuk form validation
   final _formKey = GlobalKey<FormState>();
   
-  // Controller untuk simpan data input user (Hanya Email & Password untuk Login)
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   
-  // State variables
-  bool _isObscure = true; // Untuk hide/show password
-  bool _isLoading = false; // Untuk button loading state
+  bool _isObscure = true; 
+  bool _isLoading = false; 
 
-  // Fungsi Log In
-  void _handleLogin() async {
+  // FUNGSI LOG MASUK MENGGUNAKAN EMAIL
+  Future<void> _handleLogin() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
       });
 
-      // Simulasi proses pengesahan ke pangkalan data
-      await Future.delayed(const Duration(seconds: 2));
+      try {
+        String enteredEmail = _emailController.text.trim();
+        String enteredPassword = _passwordController.text.trim();
 
-      setState(() {
-        _isLoading = false;
-      });
+        QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+            .collection('USER')
+            .where('email', isEqualTo: enteredEmail)
+            .limit(1)
+            .get();
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Login Successful! Welcome back.'),
-            backgroundColor: Color(0xFF00E5FF),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        if (mounted) {
+          if (querySnapshot.docs.isNotEmpty) {
+            DocumentSnapshot userDoc = querySnapshot.docs.first;
+            Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+            
+            if (userData['password'] == enteredPassword) {
+              String userId = userDoc.id;
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Login successful!'), backgroundColor: Colors.green),
+              );
+              
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => DashboardScreen(userId: userId),
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Incorrect password. Please try again.'), backgroundColor: Colors.red),
+              );
+            }
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Email not found. Please Sign Up first.'), backgroundColor: Colors.orange),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
     }
   }
 
-  // Fungsi untuk memaparkan Dialog Forgot Password (Double Verification - Email & Phone)
+  // --- FUNGSI FORGOT PASSWORD BARU (VERIFY EMAIL + PHONE) ---
   void _showForgotPasswordDialog() {
     final forgotFormKey = GlobalKey<FormState>();
     final TextEditingController forgotEmailController = TextEditingController();
     final TextEditingController forgotPhoneController = TextEditingController();
+    final TextEditingController newPasswordController = TextEditingController();
+    final TextEditingController confirmPasswordController = TextEditingController();
+
+    bool isVerified = false; // Status untuk check dah verify atau belum
+    bool isDialogLoading = false;
+    String verifiedUserId = '';
+    bool obscureNew = true;
+    bool obscureConfirm = true;
 
     showDialog(
       context: context,
+      barrierDismissible: false, // User kena tekan cancel, tak boleh klik luar
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF131A26),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Row(
-            children: [
-              Icon(Icons.lock_reset, color: Color(0xFF00E5FF)),
-              SizedBox(width: 10),
-              Text('Reset Password', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Form(
-              key: forgotFormKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+        // StatefulBuilder digunakan supaya popup dialog ni boleh berubah interface dia
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF131A26),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
                 children: [
-                  const Text(
-                    'Enter your registered email and phone number to verify your account identity.',
-                    style: TextStyle(color: Colors.grey, fontSize: 14),
-                  ),
-                  const SizedBox(height: 20),
-                  
-                  // Input Email untuk Forgot Password
-                  const Text('Email Address', style: TextStyle(color: Colors.white, fontSize: 14)),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: forgotEmailController,
-                    style: const TextStyle(color: Colors.white),
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: _buildInputDecoration(hint: 'example@mail.com', icon: Icons.email_outlined),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) return 'Required field';
-                      if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) return 'Invalid email';
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Input Phone untuk Forgot Password
-                  const Text('Phone Number', style: TextStyle(color: Colors.white, fontSize: 14)),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: forgotPhoneController,
-                    style: const TextStyle(color: Colors.white),
-                    keyboardType: TextInputType.phone,
-                    decoration: _buildInputDecoration(hint: 'e.g. 0123456789', icon: Icons.phone_android_outlined),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) return 'Required field';
-                      if (value.length < 9) return 'Invalid phone number';
-                      return null;
-                    },
-                  ),
+                  Icon(isVerified ? Icons.lock_reset : Icons.security, color: const Color(0xFF00E5FF)),
+                  const SizedBox(width: 10),
+                  Text(isVerified ? 'Create New Password' : 'Verify Account', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                 ],
               ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00E5FF),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              content: SingleChildScrollView(
+                child: Form(
+                  key: forgotFormKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isVerified 
+                          ? 'Authentication successful. Please enter your new password below.'
+                          : 'Enter your registered email and phone number to verify your identity.',
+                        style: const TextStyle(color: Colors.grey, fontSize: 14),
+                      ),
+                      const SizedBox(height: 20),
+                      
+                      // JIKA BELUM VERIFY: Tunjuk input Email & Nombor Telefon
+                      if (!isVerified) ...[
+                        const Text('Email Address', style: TextStyle(color: Colors.white, fontSize: 13)),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: forgotEmailController,
+                          style: const TextStyle(color: Colors.white),
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: _buildInputDecoration(hint: 'example@mail.com', icon: Icons.email_outlined),
+                          validator: (value) => value!.isEmpty ? 'Required' : null,
+                        ),
+                        const SizedBox(height: 16),
+
+                        const Text('Phone Number', style: TextStyle(color: Colors.white, fontSize: 13)),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: forgotPhoneController,
+                          style: const TextStyle(color: Colors.white),
+                          keyboardType: TextInputType.phone,
+                          decoration: _buildInputDecoration(hint: 'e.g. 0123456789', icon: Icons.phone_android_outlined),
+                          validator: (value) => value!.isEmpty ? 'Required' : null,
+                        ),
+                      ] 
+                      // JIKA DAH VERIFY: Tunjuk input Password Baru
+                      else ...[
+                        const Text('New Password', style: TextStyle(color: Colors.white, fontSize: 13)),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: newPasswordController,
+                          obscureText: obscureNew,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: _buildInputDecoration(hint: 'New Password', icon: Icons.lock_outline).copyWith(
+                            suffixIcon: IconButton(
+                              icon: Icon(obscureNew ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: Colors.grey),
+                              onPressed: () => setStateDialog(() => obscureNew = !obscureNew),
+                            ),
+                          ),
+                          validator: (value) => value!.isEmpty ? 'Required' : null,
+                        ),
+                        const SizedBox(height: 16),
+
+                        const Text('Confirm Password', style: TextStyle(color: Colors.white, fontSize: 13)),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: confirmPasswordController,
+                          obscureText: obscureConfirm,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: _buildInputDecoration(hint: 'Confirm Password', icon: Icons.lock_outline).copyWith(
+                            suffixIcon: IconButton(
+                              icon: Icon(obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: Colors.grey),
+                              onPressed: () => setStateDialog(() => obscureConfirm = !obscureConfirm),
+                            ),
+                          ),
+                          validator: (value) {
+                            if (value!.isEmpty) return 'Required';
+                            if (value != newPasswordController.text) return 'Passwords do not match';
+                            return null;
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
-              onPressed: () {
-                if (forgotFormKey.currentState!.validate()) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Verification link sent to your email and phone!'),
-                      backgroundColor: Colors.green,
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                }
-              },
-              child: const Text('Verify', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-            ),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: isDialogLoading ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00E5FF),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: isDialogLoading ? null : () async {
+                    if (forgotFormKey.currentState!.validate()) {
+                      setStateDialog(() => isDialogLoading = true);
+
+                      // FASA 1: PROSES VERIFY DALAM FIREBASE
+                      if (!isVerified) {
+                        try {
+                          String email = forgotEmailController.text.trim();
+                          String phone = forgotPhoneController.text.trim();
+
+                          // Tembak Firebase: Cari akaun yang ada Email DAN Phone Number ni
+                          QuerySnapshot query = await FirebaseFirestore.instance
+                              .collection('USER')
+                              .where('email', isEqualTo: email)
+                              .where('phone_number', isEqualTo: phone)
+                              .limit(1)
+                              .get();
+
+                          if (query.docs.isNotEmpty) {
+                            // Akaun Dijumpai! Tukar state ke bahagian Password Baru
+                            setStateDialog(() {
+                              isVerified = true;
+                              verifiedUserId = query.docs.first.id; // Simpan ID untuk update nanti
+                              isDialogLoading = false;
+                            });
+                          } else {
+                            // Akaun Tak Dijumpai / Salah Detail
+                            setStateDialog(() => isDialogLoading = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Account not found. Please check your details.'), backgroundColor: Colors.red),
+                            );
+                          }
+                        } catch (e) {
+                          setStateDialog(() => isDialogLoading = false);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                          );
+                        }
+                      } 
+                      // FASA 2: PROSES UPDATE PASSWORD BARU
+                      else {
+                        try {
+                          // Update password baru ke dalam Firebase
+                          await FirebaseFirestore.instance
+                              .collection('USER')
+                              .doc(verifiedUserId)
+                              .update({'password': newPasswordController.text.trim()});
+
+                          Navigator.pop(context); // Tutup dialog
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Password updated successfully! You can now log in.'), backgroundColor: Colors.green),
+                          );
+                        } catch (e) {
+                          setStateDialog(() => isDialogLoading = false);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Failed to update: $e'), backgroundColor: Colors.red),
+                          );
+                        }
+                      }
+                    }
+                  },
+                  child: isDialogLoading 
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                    : Text(isVerified ? 'Update' : 'Verify', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          }
         );
       },
     );
@@ -151,174 +283,125 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // --- AUTOSIZE SETUP ---
     final double screenHeight = MediaQuery.of(context).size.height;
     final double screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF090E17),
+      backgroundColor: const Color(0xFF090E17), 
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(
-            horizontal: screenWidth * 0.065, 
-            vertical: screenHeight * 0.02,   
-          ),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(height: screenHeight * 0.03),
-                
-                // --- LOGO SECTION ---
-                Center(
-                  child: Image.asset(
-                    'assets/logo.png',
-                    height: screenHeight * 0.22, 
-                    width: screenWidth * 0.75,
-                    fit: BoxFit.contain,
-                  ),
-                ),
-                
-                SizedBox(height: screenHeight * 0.04),
-
-                // --- WELCOME TEXT ---
-                const Text(
-                  'Welcome Back', 
-                  style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold), 
-                  textAlign: TextAlign.center
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Sign in to continue your fitness journey', 
-                  style: TextStyle(color: Colors.grey, fontSize: 15), 
-                  textAlign: TextAlign.center
-                ),
-                
-                SizedBox(height: screenHeight * 0.05),
-
-                // --- EMAIL INPUT ---
-                const Text('Email', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _emailController,
-                  style: const TextStyle(color: Colors.white),
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: _buildInputDecoration(hint: 'Enter your email', icon: Icons.email_outlined),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) return 'Please enter your email';
-                    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) return 'Please enter a valid email';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-
-                // --- PASSWORD INPUT ---
-                const Text('Password', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _passwordController,
-                  obscureText: _isObscure,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: _buildInputDecoration(hint: 'Enter your password', icon: Icons.lock_outline).copyWith(
-                    suffixIcon: IconButton(
-                      icon: Icon(_isObscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: Colors.grey),
-                      onPressed: () => setState(() => _isObscure = !_isObscure),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.065),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(height: screenHeight * 0.02),
+                  
+                  // --- LOGO SECTION ---
+                  Center(
+                    child: Image.asset(
+                      'assets/logo.png',
+                      height: screenHeight * 0.22, 
+                      width: screenWidth * 0.75,
+                      fit: BoxFit.contain,
                     ),
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) return 'Please enter your password';
-                    if (value.length < 6) return 'Password must be at least 6 characters';
-                    return null;
-                  },
-                ),
-                
-                // --- FORGOT PASSWORD BUTTON ---
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: _showForgotPasswordDialog,
-                    child: const Text('Forgot Password?', style: TextStyle(color: Color(0xFF00E5FF))),
-                  ),
-                ),
-                const SizedBox(height: 15),
+                  SizedBox(height: screenHeight * 0.04),
 
-                // --- SIGN IN BUTTON ---
-                Container(
-                  height: 55,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(15),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF00E5FF), Color(0xFF0088FF)],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
+                  const Text('Welcome Back', style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  const Text('Log in to continue your fitness journey.', style: TextStyle(color: Colors.grey, fontSize: 16)),
+                  const SizedBox(height: 40),
+
+                  // --- EMAIL INPUT ---
+                  const Text('Email', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: _buildInputDecoration(hint: 'Enter your email', icon: Icons.email_outlined),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) return 'Required';
+                      if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) return 'Invalid email format';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  // --- PASSWORD ---
+                  const Text('Password', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: _isObscure,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: _buildInputDecoration(hint: 'Enter your password', icon: Icons.lock_outline).copyWith(
+                      suffixIcon: IconButton(
+                        icon: Icon(_isObscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: Colors.grey),
+                        onPressed: () => setState(() => _isObscure = !_isObscure),
+                      ),
                     ),
-                    boxShadow: [
-                      BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 5)),
+                    validator: (value) => value!.isEmpty ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 10),
+
+                  // --- FORGOT PASSWORD TERCETUS DI SINI ---
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: _showForgotPasswordDialog, // Panggil fungsi dialog tadi
+                      child: const Text('Forgot Password?', style: TextStyle(color: Color(0xFF00E5FF))),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+
+                  // --- SIGN IN BUTTON ---
+                  Container(
+                    height: 55,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(15),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF00E5FF), Color(0xFF0088FF)], 
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                    ),
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _handleLogin,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text('Sign In', style: TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // --- NAVIGATE TO SIGN UP ---
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text("Don't have an account?", style: TextStyle(color: Colors.grey)),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const SignUpScreen()),
+                          );
+                        },
+                        child: const Text('Sign Up', style: TextStyle(color: Color(0xFF00E5FF), fontWeight: FontWeight.bold)),
+                      ),
                     ],
                   ),
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _handleLogin,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 24, width: 24,
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                          )
-                        : const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text('Sign In', style: TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.bold)),
-                              SizedBox(width: 10),
-                              Icon(Icons.arrow_forward, color: Colors.black87),
-                            ],
-                          ),
-                  ),
-                ),
-                
-                SizedBox(height: screenHeight * 0.05),
-
-                // --- SIGN UP LINK ---
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text("Don't have an account? ", style: TextStyle(color: Colors.grey)),
-                    TextButton(
-                      style: TextButton.styleFrom(
-                        padding: EdgeInsets.zero, 
-                        minimumSize: const Size(50, 30), 
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap
-                      ),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const SignUpScreen()),
-                        );
-                      },
-                      child: const Text("Sign Up", style: TextStyle(color: Color(0xFF00E5FF), fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                ),
-                
-                SizedBox(height: screenHeight * 0.06),
-
-                // --- BOTTOM FEATURES ROW ---
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFeatureIcon(Icons.track_changes, "Track\nWorkouts", screenWidth),
-                    _buildFeatureIcon(Icons.bar_chart, "Analyze\nProgress", screenWidth),
-                    _buildFeatureIcon(Icons.local_fire_department_outlined, "Burn\nCalories", screenWidth),
-                    _buildFeatureIcon(Icons.favorite_border, "Stay\nHealthy", screenWidth),
-                  ],
-                ),
-                const SizedBox(height: 10),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -326,7 +409,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // --- HELPER DECORATION WIDGET ---
   InputDecoration _buildInputDecoration({required String hint, required IconData icon}) {
     return InputDecoration(
       hintText: hint,
@@ -338,22 +420,6 @@ class _LoginScreenState extends State<LoginScreen> {
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey.withOpacity(0.2))),
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey.withOpacity(0.2))),
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: Color(0xFF00E5FF), width: 1.5)),
-      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: Colors.redAccent, width: 1.5)),
-      focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: Colors.redAccent, width: 1.5)),
-    );
-  }
-
-  Widget _buildFeatureIcon(IconData icon, String label, double screenWidth) {
-    return Column(
-      children: [
-        Container(
-          padding: EdgeInsets.all(screenWidth * 0.03), 
-          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.withOpacity(0.2)), color: const Color(0xFF131A26)),
-          child: Icon(icon, color: const Color(0xFF00E5FF), size: 24),
-        ),
-        const SizedBox(height: 8),
-        Text(label, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-      ],
     );
   }
 }
