@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 import 'profile_screen.dart';
+import 'bmi_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String userId; 
@@ -189,6 +190,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     children: [
                       Expanded(child: _buildModuleCard(context, 'BMI Calculator', 'Calculate your BMI\nand track progress', Icons.calculate, const Color(0xFF00E5FF), () {
                         // Letak Navigator ke Skrin BMI nanti
+                        Navigator.push(
+                           context,
+                          MaterialPageRoute(builder: (context) => const BmiScreen()),
+                        );
                       })),
                       SizedBox(width: screenWidth * 0.04),
                       Expanded(child: _buildModuleCard(context, 'Workout', 'Explore workouts\nand build strength', Icons.fitness_center, const Color(0xFF9D50BB), () {
