@@ -1,436 +1,435 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 import 'login_screen.dart';
 
-// ==========================================
-// 1. SKRIN PROFIL UTAMA (MAIN PROFILE)
-// ==========================================
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   final String userId;
 
   const ProfileScreen({super.key, required this.userId});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF090E17),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text('Profile', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        actions: [
-          TextButton.icon(
-            onPressed: () {
-              Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
-            },
-            icon: const Text('Logout', style: TextStyle(color: Colors.redAccent)),
-            label: const Icon(Icons.logout, color: Colors.redAccent, size: 20),
-          ),
-          const SizedBox(width: 10),
-        ],
-      ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('USER').doc(userId).snapshots(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData || snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFF00E5FF)));
-          }
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
 
-          var userData = snapshot.data!.data() as Map<String, dynamic>? ?? {};
-          String name = userData['name'] ?? 'User';
-          String email = userData['email'] ?? 'No email';
-          String age = userData['age']?.toString() ?? '0';
-          String imageUrl = userData['profile_image'] ?? '';
-          String initial = name.isNotEmpty ? name[0].toUpperCase() : 'U';
+class _ProfileScreenState extends State<ProfileScreen> {
+  String? _imageUrl; // Simpan URL gambar dari Cloudinary
+  bool _isLoading = false;
+  bool _isAvatarPressed = false;
+  
+  String _userName = "Loading...";
+  String _userEmail = "Loading...";
+  String _userAge = "-";
+  String _userPhone = "-";
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                // --- AVATAR GLOW DESIGN ---
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF00E5FF), Color(0xFF9D50BB)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    boxShadow: [
-                      BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.3), blurRadius: 20, spreadRadius: 5),
-                    ],
-                  ),
-                  child: CircleAvatar(
-                    radius: 55,
-                    backgroundColor: const Color(0xFF131A26),
-                    backgroundImage: imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
-                    child: imageUrl.isEmpty
-                        ? Text(initial, style: const TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.bold))
-                        : null,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Text(name, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 5),
-                Text(email, style: const TextStyle(color: Colors.grey, fontSize: 14)),
-                const SizedBox(height: 30),
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileData();
+  }
 
-                // --- OVERVIEW CARD ---
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(color: const Color(0xFF131A26), borderRadius: BorderRadius.circular(20)),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Row(
-                          children: [
-                            const CircleAvatar(backgroundColor: Color(0xFF0F2537), child: Icon(Icons.person_outline, color: Color(0xFF00E5FF))),
-                            const SizedBox(width: 15),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('Age', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                                Text('$age Years', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(height: 40, width: 1, color: Colors.grey.withOpacity(0.2)),
-                      const SizedBox(width: 20),
-                      const Expanded(
-                        child: Row(
-                          children: [
-                            CircleAvatar(backgroundColor: Color(0xFF0F302D), child: Icon(Icons.calendar_month, color: Color(0xFF00E676))),
-                            SizedBox(width: 15),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Total Active Days', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                                Text('45 Days', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 30),
+  // --- 1. AMBIL DATA DAN URL GAMBAR DARI FIRESTORE ---
+  Future<void> _loadProfileData() async {
+    try {
+      final docSnapshot = await FirebaseFirestore.instance.collection('users').doc(widget.userId).get();
+      
+      if (docSnapshot.exists && mounted) {
+        final data = docSnapshot.data()!;
+        setState(() {
+          _userName = data['name'] ?? 'User';
+          _userEmail = data['email'] ?? 'No email';
+          _userAge = data['age']?.toString() ?? '-';
+          _userPhone = data['phone_number'] ?? '-';
+          // Tarik URL gambar kalau dah ada dalam database
+          _imageUrl = data['profile_image_url']; 
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _userName = 'Error Loading');
+      }
+    }
+  }
 
-                // --- MENU LIST ---
-                _buildMenuTile(
-                  icon: Icons.person_outline, 
-                  color: const Color(0xFF9D50BB), 
-                  title: 'Personal Information', 
-                  subtitle: 'Update your personal details',
-                  onTap: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => EditProfileScreen(userId: userId, userData: userData)));
-                  }
-                ),
-                _buildMenuTile(icon: Icons.track_changes, color: const Color(0xFF00E676), title: 'Goals', subtitle: 'View and update your goals'),
-                _buildMenuTile(icon: Icons.bar_chart, color: const Color(0xFFFFB300), title: 'Progress History', subtitle: 'Track your fitness progress'),
-                _buildMenuTile(icon: Icons.notifications_none, color: const Color(0xFF00E5FF), title: 'Notifications', subtitle: 'Manage your notifications'),
-                _buildMenuTile(icon: Icons.privacy_tip_outlined, color: const Color(0xFFE91E63), title: 'Privacy', subtitle: 'Manage your privacy settings'),
-                _buildMenuTile(icon: Icons.settings_outlined, color: const Color(0xFF00E5FF), title: 'Settings', subtitle: 'Customize your app experience'),
-              ],
+  // --- 2. MUAT NAIK GAMBAR KE CLOUDINARY & SIMPAN URL KE FIRESTORE ---
+  Future<void> _pickAndUploadImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 60);
+
+    if (image == null) return; 
+
+    setState(() => _isLoading = true);
+
+    try {
+      final File file = File(image.path);
+      
+      // --- SETUP API CLOUDINARY ---
+      const String cloudName = "mfi1getk"; 
+      const String uploadPreset = "fitTrack_profile";     
+      
+      final Uri uri = Uri.parse("https://api.cloudinary.com/v1_1/$cloudName/image/upload");
+      final request = http.MultipartRequest("POST", uri);
+      
+      request.fields['upload_preset'] = uploadPreset;
+      request.files.add(await http.MultipartFile.fromPath('file', file.path));
+
+      final response = await request.send();
+      final responseData = await response.stream.toBytes();
+      final responseString = String.fromCharCodes(responseData);
+      final jsonMap = jsonDecode(responseString);
+
+      if (response.statusCode == 200) {
+        final String secureUrl = jsonMap['secure_url'];
+
+        await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
+          'profile_image_url': secureUrl,
+        });
+
+        if (mounted) {
+          setState(() => _imageUrl = secureUrl);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile picture updated!'), backgroundColor: Colors.green));
+        }
+      } else {
+        throw Exception(jsonMap['error']['message'] ?? 'Upload failed');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // --- 3. POPUP EDIT PROFIL ---
+  void _showEditProfileDialog() {
+    final TextEditingController nameCtrl = TextEditingController(text: _userName);
+    final TextEditingController ageCtrl = TextEditingController(text: _userAge);
+    final TextEditingController phoneCtrl = TextEditingController(text: _userPhone);
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF131A26),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Text('Edit Profile', style: TextStyle(color: Colors.white)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(controller: nameCtrl, style: const TextStyle(color: Colors.white), decoration: _dialogInputDecoration('Full Name', Icons.person)),
+                  const SizedBox(height: 15),
+                  TextField(controller: ageCtrl, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number, decoration: _dialogInputDecoration('Age', Icons.cake)),
+                  const SizedBox(height: 15),
+                  TextField(controller: phoneCtrl, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.phone, decoration: _dialogInputDecoration('Phone Number', Icons.phone)),
+                ],
+              ),
             ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
+                onPressed: isSaving ? null : () async {
+                  setStateDialog(() => isSaving = true);
+                  try {
+                    await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
+                      'name': nameCtrl.text.trim(),
+                      'age': int.tryParse(ageCtrl.text.trim()) ?? 0,
+                      'phone_number': phoneCtrl.text.trim(),
+                    });
+                    if (mounted) {
+                      Navigator.pop(context);
+                      _loadProfileData(); 
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile updated!'), backgroundColor: Colors.green));
+                    }
+                  } catch (e) {
+                    setStateDialog(() => isSaving = false);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+                  }
+                },
+                child: isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black)) : const Text('Save', style: TextStyle(color: Colors.black)),
+              ),
+            ],
           );
         }
       ),
     );
   }
 
-  // Helper function (_buildMenuTile) wajib duduk kat dalam ProfileScreen
-  Widget _buildMenuTile({required IconData icon, required Color color, required String title, required String subtitle, VoidCallback? onTap}) {
-    return ListTile(
-      onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 5, vertical: 8),
-      leading: CircleAvatar(
-        backgroundColor: Colors.transparent,
-        child: Icon(icon, color: color, size: 28),
-      ),
-      title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-      subtitle: Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-      trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
-    );
-  }
-}
+  // --- 4. POPUP VERIFY IDENTITY ---
+  void _showVerificationDialog() {
+    final TextEditingController emailCtrl = TextEditingController();
+    final TextEditingController phoneCtrl = TextEditingController();
+    bool isVerifying = false;
 
-// ==========================================
-// 2. SKRIN EDIT PROFIL (PERSONAL INFORMATION)
-// ==========================================
-class EditProfileScreen extends StatefulWidget {
-  final String userId;
-  final Map<String, dynamic> userData;
-
-  const EditProfileScreen({super.key, required this.userId, required this.userData});
-
-  @override
-  State<EditProfileScreen> createState() => _EditProfileScreenState();
-}
-
-class _EditProfileScreenState extends State<EditProfileScreen> {
-  late TextEditingController _nameController;
-  late TextEditingController _phoneController;
-  late TextEditingController _ageController;
-  late TextEditingController _emailController;
-  late TextEditingController _passwordController;
-
-  bool _isObscure = true;
-  bool _isUpdating = false;
-  File? _imageFile;
-
-  @override
-  void initState() {
-    super.initState();
-    _nameController = TextEditingController(text: widget.userData['name']);
-    _phoneController = TextEditingController(text: widget.userData['phone_number']);
-    _ageController = TextEditingController(text: widget.userData['age']?.toString());
-    _emailController = TextEditingController(text: widget.userData['email']);
-    _passwordController = TextEditingController(text: widget.userData['password']); 
-  }
-
-  Future<void> _pickImage() async {
-    final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-      });
-    }
-  }
-
-  void _verifyToViewPassword() {
-    TextEditingController verifyController = TextEditingController();
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF131A26),
-          title: const Text('Verify Identity', style: TextStyle(color: Colors.white)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Enter your current password to view it.', style: TextStyle(color: Colors.grey)),
-              const SizedBox(height: 15),
-              TextField(
-                controller: verifyController,
-                obscureText: true,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  hintText: 'Current Password',
-                  hintStyle: TextStyle(color: Colors.grey),
-                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
-                  focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF00E5FF))),
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF131A26),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Color(0xFF00E5FF), width: 1)),
+            title: const Text('Verify Identity', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: emailCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _dialogInputDecoration('Registered Email', Icons.email_outlined),
                 ),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _dialogInputDecoration('Registered Phone No.', Icons.phone_outlined),
+                ),
+              ],
+            ),
+            actions: [
+              if (!isVerifying)
+                TextButton(
+                  onPressed: () => Navigator.pop(context), 
+                  child: const Text('Cancel', style: TextStyle(color: Colors.grey))
+                ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
+                onPressed: isVerifying ? null : () async {
+                  if (emailCtrl.text.isEmpty || phoneCtrl.text.isEmpty) return;
+                  
+                  setStateDialog(() => isVerifying = true);
+                  
+                  try {
+                    // Semak dengan Firestore Data
+                    DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(widget.userId).get();
+                    
+                    if (userDoc.exists) {
+                      final data = userDoc.data() as Map<String, dynamic>;
+                      String savedEmail = data['email']?.toString().trim() ?? '';
+                      String savedPhone = data['phone_number']?.toString().trim() ?? '';
+
+                      // Jika padan, tutup popup verify dan buka popup tukar password
+                      if (emailCtrl.text.trim() == savedEmail && phoneCtrl.text.trim() == savedPhone) {
+                        if (mounted) {
+                          Navigator.pop(context); // Tutup dialog verify
+                          _showChangePasswordDialog(); // Panggil fungsi tukar password
+                        }
+                      } else {
+                        // Jika tak padan
+                        setStateDialog(() => isVerifying = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Details do not match!'), backgroundColor: Colors.redAccent));
+                        }
+                      }
+                    }
+                  } catch (e) {
+                    setStateDialog(() => isVerifying = false);
+                  }
+                },
+                child: isVerifying 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black)) 
+                  : const Text('Verify', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
               ),
             ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
-              onPressed: () {
-                if (verifyController.text == widget.userData['password']) {
-                  Navigator.pop(context);
-                  setState(() {
-                    _isObscure = false;
-                  });
-                } else {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Incorrect password!'), backgroundColor: Colors.red));
-                }
-              },
-              child: const Text('Verify', style: TextStyle(color: Colors.black)),
-            ),
-          ],
-        );
-      }
+          );
+        }
+      ),
     );
   }
 
-  Future<void> _saveChanges() async {
-    setState(() => _isUpdating = true);
-    try {
-      String? imageUrl = widget.userData['profile_image'];
+  // --- 5. POPUP TUKAR KATA LALUAN ---
+  void _showChangePasswordDialog() {
+    final TextEditingController passCtrl = TextEditingController();
+    bool isSaving = false;
 
-      if (_imageFile != null) {
-        String safeUserId = widget.userId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
-        final storageRef = FirebaseStorage.instance
-            .ref()
-            .child('profile_images')
-            .child('$safeUserId.jpg');
-        
-        UploadTask uploadTask = storageRef.putFile(_imageFile!);
-        TaskSnapshot snapshot = await uploadTask;
-        imageUrl = await snapshot.ref.getDownloadURL();
-      }
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF131A26),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Text('Change Password', style: TextStyle(color: Colors.white)),
+            content: TextField(
+              controller: passCtrl,
+              obscureText: true,
+              style: const TextStyle(color: Colors.white),
+              decoration: _dialogInputDecoration('New Password', Icons.lock),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
+                onPressed: isSaving ? null : () async {
+                  if (passCtrl.text.length < 6) return;
+                  setStateDialog(() => isSaving = true);
+                  try {
+                    await FirebaseAuth.instance.currentUser?.updatePassword(passCtrl.text.trim());
+                    if (mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password changed successfully!'), backgroundColor: Colors.green));
+                    }
+                  } catch (e) {
+                    setStateDialog(() => isSaving = false);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+                  }
+                },
+                child: isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black)) : const Text('Update', style: TextStyle(color: Colors.black)),
+              ),
+            ],
+          );
+        }
+      ),
+    );
+  }
 
-      await FirebaseFirestore.instance.collection('USER').doc(widget.userId).update({
-        'name': _nameController.text.trim(),
-        'phone_number': _phoneController.text.trim(),
-        'age': int.tryParse(_ageController.text.trim()) ?? 0,
-        'email': _emailController.text.trim(),
-        'password': _passwordController.text.trim(),
-        'profile_image': imageUrl ?? '',
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated successfully!'), backgroundColor: Colors.green)
-        );
-        Navigator.pop(context); 
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red)
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isUpdating = false);
-      }
+  // --- 6. LOG OUT ---
+  Future<void> _handleLogout() async {
+    await FirebaseAuth.instance.signOut();
+    if (mounted) {
+      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LoginScreen()), (route) => false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    String currentImage = widget.userData['profile_image'] ?? '';
-
     return Scaffold(
       backgroundColor: const Color(0xFF090E17),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white), 
-          onPressed: () => Navigator.pop(context)
-        ),
-        title: const Text('Personal Information', style: TextStyle(color: Colors.white)),
+        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white), onPressed: () => Navigator.pop(context)),
+        title: const Text('Profile', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          children: [
-            GestureDetector(
-              onTap: _pickImage,
-              child: Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 60,
-                    backgroundColor: const Color(0xFF131A26),
-                    backgroundImage: _imageFile != null 
-                        ? FileImage(_imageFile!) as ImageProvider 
-                        : (currentImage.isNotEmpty ? NetworkImage(currentImage) : null),
-                    child: (_imageFile == null && currentImage.isEmpty)
-                        ? const Icon(Icons.person, size: 60, color: Colors.grey)
-                        : null,
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: const BoxDecoration(color: Color(0xFF00E5FF), shape: BoxShape.circle),
-                      child: const Icon(Icons.camera_alt, color: Colors.black, size: 20),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Column(
+            children: [
+              const SizedBox(height: 20),
+              
+              // --- AVATAR INTERAKTIF ---
+              Center(
+                child: GestureDetector(
+                  onTapDown: (_) => setState(() => _isAvatarPressed = true),
+                  onTapUp: (_) {
+                    setState(() => _isAvatarPressed = false);
+                    _pickAndUploadImage();
+                  },
+                  onTapCancel: () => setState(() => _isAvatarPressed = false),
+                  child: AnimatedScale(
+                    scale: _isAvatarPressed ? 0.92 : 1.0,
+                    duration: const Duration(milliseconds: 150),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Container(
+                          width: 130, height: 130,
+                          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFF03A9F4).withOpacity(0.4), width: 2), boxShadow: [BoxShadow(color: const Color(0xFF03A9F4).withOpacity(0.1), blurRadius: 15, spreadRadius: 2)]),
+                        ),
+                        CircleAvatar(
+                          radius: 60,
+                          backgroundColor: const Color(0xFF131A26),
+                          backgroundImage: (_imageUrl != null && !_isLoading) ? NetworkImage(_imageUrl!) : null,
+                          child: (_imageUrl == null && !_isLoading) ? const Icon(Icons.person, size: 60, color: Colors.grey) : null,
+                        ),
+                        if (_isLoading)
+                          Container(width: 120, height: 120, decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), shape: BoxShape.circle), child: const Center(child: CircularProgressIndicator(color: Color(0xFF03A9F4)))),
+                        Positioned(
+                          bottom: 0, right: 5,
+                          child: Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: Color(0xFF03A9F4), shape: BoxShape.circle), child: const Icon(Icons.camera_alt, color: Colors.black, size: 16)),
+                        ),
+                      ],
                     ),
                   ),
+                ),
+              ),
+              
+              const SizedBox(height: 20),
+              
+              Text(_userName, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+              const SizedBox(height: 5),
+              Text(_userEmail, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+              
+              const SizedBox(height: 30),
+
+              Row(
+                children: [
+                  Expanded(child: _buildInfoCard('Age', _userAge, Icons.cake)),
+                  const SizedBox(width: 15),
+                  Expanded(child: _buildInfoCard('Phone', _userPhone, Icons.phone)),
                 ],
               ),
-            ),
-            const SizedBox(height: 30),
-
-            _buildTextField('Full Name', _nameController, Icons.person_outline),
-            const SizedBox(height: 20),
-            _buildTextField('Age', _ageController, Icons.cake_outlined, isNumber: true),
-            const SizedBox(height: 20),
-            _buildTextField('Phone Number', _phoneController, Icons.phone_android_outlined, isNumber: true),
-            const SizedBox(height: 20),
-            _buildTextField('Email', _emailController, Icons.email_outlined),
-            const SizedBox(height: 20),
-
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Password', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _passwordController,
-                  obscureText: _isObscure,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.lock_outline, color: Colors.grey, size: 22),
-                    suffixIcon: IconButton(
-                      icon: Icon(_isObscure ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: Colors.grey),
-                      onPressed: () {
-                        if (_isObscure) {
-                          _verifyToViewPassword();
-                        } else {
-                          setState(() => _isObscure = true); 
-                        }
-                      },
-                    ),
-                    filled: true,
-                    fillColor: const Color(0xFF131A26),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 40),
-
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00E5FF),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                ),
-                onPressed: _isUpdating ? null : _saveChanges,
-                child: _isUpdating 
-                    ? const SizedBox(
-                        width: 24, 
-                        height: 24, 
-                        child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2.5)
-                      )
-                    : const Text('Save Changes', style: TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold)),
+              
+              const SizedBox(height: 30),
+              
+              _buildMenuTile('Edit Profile', Icons.edit, _showEditProfileDialog),
+              
+              // --- UBAH SINI: Halakan ke pop-up Verify Identity terlebih dahulu ---
+              _buildMenuTile('Change Password', Icons.lock_reset, _showVerificationDialog),
+              
+              const SizedBox(height: 20),
+              
+              ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                tileColor: Colors.redAccent.withOpacity(0.1),
+                leading: const Icon(Icons.logout, color: Colors.redAccent),
+                title: const Text('Log Out', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                onTap: _handleLogout,
               ),
-            ),
-          ],
+              const SizedBox(height: 30),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // Helper function (_buildTextField) wajib duduk kat dalam EditProfileScreen
-  Widget _buildTextField(String label, TextEditingController controller, IconData icon, {bool isNumber = false}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 8),
-        TextFormField(
-          controller: controller,
-          keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            prefixIcon: Icon(icon, color: Colors.grey, size: 22),
-            filled: true,
-            fillColor: const Color(0xFF131A26),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-          ),
-        ),
-      ],
+  Widget _buildInfoCard(String title, String value, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(color: const Color(0xFF131A26), borderRadius: BorderRadius.circular(15)),
+      child: Column(
+        children: [
+          Icon(icon, color: const Color(0xFF03A9F4), size: 24),
+          const SizedBox(height: 10),
+          Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          const SizedBox(height: 5),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMenuTile(String title, IconData icon, VoidCallback onTap) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 15),
+      decoration: BoxDecoration(color: const Color(0xFF131A26), borderRadius: BorderRadius.circular(16)),
+      child: ListTile(
+        leading: Icon(icon, color: const Color(0xFF03A9F4)),
+        title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+        trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
+        onTap: onTap,
+      ),
+    );
+  }
+
+  InputDecoration _dialogInputDecoration(String hint, IconData icon) {
+    return InputDecoration(
+      hintText: hint, hintStyle: const TextStyle(color: Colors.grey),
+      prefixIcon: Icon(icon, color: Colors.grey),
+      filled: true, fillColor: const Color(0xFF090E17),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
     );
   }
 }

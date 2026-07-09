@@ -8,39 +8,41 @@ class BmiScreen extends StatefulWidget {
 }
 
 class _BmiScreenState extends State<BmiScreen> {
-  final TextEditingController _heightController = TextEditingController();
-  final TextEditingController _weightController = TextEditingController();
+  // --- STATE VARIABLES ---
+  bool _isMetric = true; 
+
+  double _heightCm = 170.0;
+  double _weightKg = 65.0;
+
+  double _heightInches = 67.0; 
+  double _weightLbs = 143.0;
 
   double? _bmiValue;
   String _bmiCategory = '';
   Color _bmiColor = Colors.white;
   String _bmiMessage = '';
-  List<String> _bmiInsights = []; // Untuk simpan maklumat tambahan tentang keputusan
+  List<String> _bmiInsights = [];
 
-  // Fungsi untuk mengira BMI
+  // --- FUNGSI KIRA BMI ---
   void _calculateBMI() {
-    double heightCm = double.tryParse(_heightController.text) ?? 0;
-    double weightKg = double.tryParse(_weightController.text) ?? 0;
+    double bmi = 0;
 
-    if (heightCm > 0 && weightKg > 0) {
-      double heightM = heightCm / 100;
-      double bmi = weightKg / (heightM * heightM);
-
-      setState(() {
-        _bmiValue = bmi;
-        _determineBMICategory(bmi);
-      });
+    if (_isMetric) {
+      double heightM = _heightCm / 100;
+      bmi = _weightKg / (heightM * heightM);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter valid height and weight.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      bmi = (_weightLbs / (_heightInches * _heightInches)) * 703;
     }
+
+    setState(() {
+      _bmiValue = bmi;
+      _determineBMICategory(bmi);
+    });
+
+    // --- PANGGIL POPUP KEPUTUSAN SELEPAS KIRA ---
+    _showResultBottomSheet();
   }
 
-  // Fungsi untuk tentukan kategori, mesej, dan maklumat tambahan (insights)
   void _determineBMICategory(double bmi) {
     if (bmi < 18.5) {
       _bmiCategory = 'Underweight';
@@ -81,7 +83,153 @@ class _BmiScreenState extends State<BmiScreen> {
     }
   }
 
-  // FUNGSI UNTUK TUNJUK MAKLUMAT TAMBAHAN AM TENTANG BMI (BOTTOM SHEET)
+  // --- FUNGSI POPUP UNTUK TUNJUK KEPUTUSAN BMI ---
+  void _showResultBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent, // Buat transparent sebab kita nak design kotak sendiri
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).padding.bottom,
+          ),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFF090E17), // Warna background utama aplikasi
+              borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+            ),
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // --- GARISAN DRAG (HANDLE) ---
+                    Container(
+                      width: 50,
+                      height: 5,
+                      margin: const EdgeInsets.only(bottom: 20),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withOpacity(0.3), 
+                        borderRadius: BorderRadius.circular(10)
+                      ),
+                    ),
+                    // --- MASUKKAN KAD KEPUTUSAN ---
+                    _buildResultCard(),
+                    const SizedBox(height: 10),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // --- FUNGSI POPUP UNTUK TAIP NOMBOR ---
+  void _showInputDialog(String title, bool isHeight) {
+    TextEditingController ctrl1 = TextEditingController();
+    TextEditingController ctrl2 = TextEditingController(); 
+
+    if (isHeight) {
+       if (_isMetric) ctrl1.text = _heightCm.toInt().toString();
+       else {
+          ctrl1.text = (_heightInches ~/ 12).toString();
+          ctrl2.text = (_heightInches % 12).toInt().toString();
+       }
+    } else {
+       ctrl1.text = _isMetric ? _weightKg.toInt().toString() : _weightLbs.toInt().toString();
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+         return AlertDialog(
+            backgroundColor: const Color(0xFF131A26),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Text('Enter $title', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            content: _isMetric || !isHeight 
+               ? TextField(
+                   controller: ctrl1,
+                   keyboardType: TextInputType.number,
+                   style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                   decoration: InputDecoration(
+                      suffixText: isHeight ? 'cm' : (_isMetric ? 'kg' : 'lbs'), 
+                      suffixStyle: const TextStyle(color: Colors.grey),
+                      enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                      focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF00E5FF))),
+                   ),
+                   autofocus: true,
+                 )
+               : Row(
+                   children: [
+                     Expanded(
+                       child: TextField(
+                         controller: ctrl1, 
+                         keyboardType: TextInputType.number, 
+                         style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold), 
+                         decoration: const InputDecoration(
+                           suffixText: 'ft',
+                           suffixStyle: TextStyle(color: Colors.grey),
+                           enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                           focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF00E5FF))),
+                         ),
+                         autofocus: true,
+                       )
+                     ),
+                     const SizedBox(width: 15),
+                     Expanded(
+                       child: TextField(
+                         controller: ctrl2, 
+                         keyboardType: TextInputType.number, 
+                         style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold), 
+                         decoration: const InputDecoration(
+                           suffixText: 'in',
+                           suffixStyle: TextStyle(color: Colors.grey),
+                           enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                           focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF00E5FF))),
+                         )
+                       )
+                     ),
+                   ]
+                 ),
+            actions: [
+               TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+               ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
+                  onPressed: () {
+                     setState((){
+                        if (isHeight) {
+                           if (_isMetric) {
+                              _heightCm = double.tryParse(ctrl1.text) ?? _heightCm;
+                              _heightCm = _heightCm.clamp(100.0, 250.0); 
+                           } else {
+                              _heightInches = (double.tryParse(ctrl1.text) ?? 0) * 12 + (double.tryParse(ctrl2.text) ?? 0);
+                              _heightInches = _heightInches.clamp(40.0, 98.0);
+                           }
+                        } else {
+                           if (_isMetric) {
+                              _weightKg = double.tryParse(ctrl1.text) ?? _weightKg;
+                              _weightKg = _weightKg.clamp(30.0, 200.0);
+                           } else {
+                              _weightLbs = double.tryParse(ctrl1.text) ?? _weightLbs;
+                              _weightLbs = _weightLbs.clamp(66.0, 440.0);
+                           }
+                        }
+                        _bmiValue = null; 
+                     });
+                     Navigator.pop(context);
+                  },
+                  child: const Text('Save', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold))
+               )
+            ]
+         );
+      }
+    );
+  }
+
   void _showBmiInfoBottomSheet() {
     showModalBottomSheet(
       context: context,
@@ -99,7 +247,7 @@ class _BmiScreenState extends State<BmiScreen> {
             bottom: MediaQuery.of(context).padding.bottom + 24.0, 
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min, // <-- Pastikan saiz ikut isi kandungan
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Center(
@@ -123,7 +271,7 @@ class _BmiScreenState extends State<BmiScreen> {
               _buildCategoryInfoRow('Normal Weight', '18.5 – 24.9', const Color(0xFF00E676)),
               _buildCategoryInfoRow('Overweight', '25.0 – 29.9', const Color(0xFFFFA000)),
               _buildCategoryInfoRow('Obese', '≥ 30.0', const Color(0xFFE53935)),
-              const SizedBox(height: 15), // Tambah sikit ruang pernafasan kat bawah
+              const SizedBox(height: 15), 
             ],
           ),
         );
@@ -166,98 +314,282 @@ class _BmiScreenState extends State<BmiScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline, color: Color(0xFF00E5FF)),
-            onPressed: _showBmiInfoBottomSheet, // LINK-KAN BUTANG INFO KE PANEL DI SINI
+            onPressed: _showBmiInfoBottomSheet,
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(15),
-              decoration: BoxDecoration(
-                color: const Color(0xFF131A26),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.1), blurRadius: 20, spreadRadius: 2),
-                ],
-              ),
-              child: const Icon(Icons.monitor_weight_outlined, color: Color(0xFF00E5FF), size: 40),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Enter your details to calculate\nyour Body Mass Index',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 14),
-            ),
-            const SizedBox(height: 40),
-
-            _buildInputField(label: 'Height (cm)', controller: _heightController, icon: Icons.height, suffixText: 'cm'),
-            const SizedBox(height: 20),
-            _buildInputField(label: 'Weight (kg)', controller: _weightController, icon: Icons.fitness_center, suffixText: 'kg'),
-            const SizedBox(height: 30),
-
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00E5FF),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.only(left: 24.0, right: 24.0, top: 20.0, bottom: 40.0), // Dah tak perlukan padding bawah terlalu besar
+          child: Column(
+            children: [
+              // --- SUIS TOGGLE UNIT ---
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF131A26),
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: Colors.grey.withOpacity(0.2)),
                 ),
-                onPressed: _calculateBMI,
-                child: const Text('Calculate', style: TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold)),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _isMetric = true;
+                            _bmiValue = null;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: _isMetric ? const Color(0xFF00E5FF) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: Center(
+                            child: Text('Metric', style: TextStyle(color: _isMetric ? Colors.black : Colors.grey, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _isMetric = false;
+                            _bmiValue = null;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: !_isMetric ? const Color(0xFF00E5FF) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: Center(
+                            child: Text('Imperial', style: TextStyle(color: !_isMetric ? Colors.black : Colors.grey, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 40),
+              const SizedBox(height: 30),
 
-            if (_bmiValue != null) _buildResultCard(),
-          ],
+              // --- WIDGET INTERAKTIF TINGGI ---
+              _buildInteractiveHeight(),
+              const SizedBox(height: 20),
+
+              // --- WIDGET INTERAKTIF BERAT ---
+              _buildInteractiveWeight(),
+              const SizedBox(height: 30),
+
+              // --- BUTANG KIRA ---
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00E5FF),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  ),
+                  onPressed: _calculateBMI,
+                  child: const Text('Calculate BMI', style: TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              
+              // KITA DAH BUANG _buildResultCard() DARI SINI
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildInputField({required String label, required TextEditingController controller, required IconData icon, required String suffixText}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF131A26),
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: Colors.grey.withOpacity(0.2)),
+  // --- WIDGET TINGGI (HEIGHT) ---
+  Widget _buildInteractiveHeight() {
+    String displayHeight = _isMetric 
+        ? '${_heightCm.toInt()} cm' 
+        : '${(_heightInches ~/ 12)}\' ${(_heightInches % 12).toInt()}"';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF131A26),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.withOpacity(0.1)),
+      ),
+      child: Column(
+        children: [
+          const Text('Height', style: TextStyle(color: Colors.grey, fontSize: 16)),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: () => _showInputDialog('Height', true),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  _isMetric ? _heightCm.toInt().toString() : displayHeight,
+                  style: const TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.bold),
+                ),
+                if (_isMetric) const Text(' cm', style: TextStyle(color: Colors.grey, fontSize: 20)),
+              ],
+            ),
           ),
-          child: Row(
+          const SizedBox(height: 15),
+          Row(
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 15),
-                child: Icon(icon, color: const Color(0xFF00E5FF), size: 24),
+              _buildCircleButton(
+                icon: Icons.remove, 
+                onPressed: () {
+                  setState(() {
+                    _bmiValue = null;
+                    if (_isMetric && _heightCm > 100) _heightCm--;
+                    if (!_isMetric && _heightInches > 40) _heightInches--;
+                  });
+                }
               ),
               Expanded(
-                child: TextField(
-                  controller: controller,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                  decoration: const InputDecoration(border: InputBorder.none, hintText: '0', hintStyle: TextStyle(color: Colors.grey)),
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: const Color(0xFF00E5FF),
+                    inactiveTrackColor: Colors.grey.withOpacity(0.3),
+                    thumbColor: const Color(0xFF00E5FF),
+                    overlayColor: const Color(0xFF00E5FF).withOpacity(0.2),
+                    trackHeight: 4,
+                  ),
+                  child: Slider(
+                    value: _isMetric ? _heightCm : _heightInches,
+                    min: _isMetric ? 100.0 : 40.0,
+                    max: _isMetric ? 250.0 : 98.0,
+                    onChanged: (newValue) {
+                      setState(() {
+                        _bmiValue = null; 
+                        if (_isMetric) _heightCm = newValue;
+                        else _heightInches = newValue;
+                      });
+                    },
+                  ),
                 ),
               ),
-              Container(width: 1, height: 30, color: Colors.grey.withOpacity(0.3)),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 15),
-                child: Text(suffixText, style: const TextStyle(color: Colors.grey, fontSize: 16)),
+              _buildCircleButton(
+                icon: Icons.add, 
+                onPressed: () {
+                  setState(() {
+                    _bmiValue = null;
+                    if (_isMetric && _heightCm < 250) _heightCm++;
+                    if (!_isMetric && _heightInches < 98) _heightInches++;
+                  });
+                }
               ),
             ],
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  // WIDGET KEPUTUSAN YANG TELAH DITAMBAH MAKLUMAT DETAIL (INSIGHTS)
+  // --- WIDGET BERAT (WEIGHT) ---
+  Widget _buildInteractiveWeight() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF131A26),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.withOpacity(0.1)),
+      ),
+      child: Column(
+        children: [
+          const Text('Weight', style: TextStyle(color: Colors.grey, fontSize: 16)),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: () => _showInputDialog('Weight', false),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  _isMetric ? _weightKg.toInt().toString() : _weightLbs.toInt().toString(),
+                  style: const TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.bold),
+                ),
+                Text(_isMetric ? ' kg' : ' lbs', style: const TextStyle(color: Colors.grey, fontSize: 20)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 15),
+          Row(
+            children: [
+              _buildCircleButton(
+                icon: Icons.remove, 
+                onPressed: () {
+                  setState(() {
+                    _bmiValue = null;
+                    if (_isMetric && _weightKg > 30) _weightKg--;
+                    if (!_isMetric && _weightLbs > 66) _weightLbs--;
+                  });
+                }
+              ),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: const Color(0xFF00E5FF),
+                    inactiveTrackColor: Colors.grey.withOpacity(0.3),
+                    thumbColor: const Color(0xFF00E5FF),
+                    overlayColor: const Color(0xFF00E5FF).withOpacity(0.2),
+                    trackHeight: 4,
+                  ),
+                  child: Slider(
+                    value: _isMetric ? _weightKg : _weightLbs,
+                    min: _isMetric ? 30.0 : 66.0,
+                    max: _isMetric ? 200.0 : 440.0,
+                    onChanged: (newValue) {
+                      setState(() {
+                        _bmiValue = null; 
+                        if (_isMetric) _weightKg = newValue;
+                        else _weightLbs = newValue;
+                      });
+                    },
+                  ),
+                ),
+              ),
+              _buildCircleButton(
+                icon: Icons.add, 
+                onPressed: () {
+                  setState(() {
+                    _bmiValue = null;
+                    if (_isMetric && _weightKg < 200) _weightKg++;
+                    if (!_isMetric && _weightLbs < 440) _weightLbs++;
+                  });
+                }
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCircleButton({required IconData icon, required VoidCallback onPressed}) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(25),
+      child: Container(
+        width: 45,
+        height: 45,
+        decoration: const BoxDecoration(
+          color: Color(0xFF1D2633),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: Colors.white),
+      ),
+    );
+  }
+
+  // --- KAD KEPUTUSAN BMI (SEKARANG MUNCUL DI POPUP) ---
   Widget _buildResultCard() {
     return Container(
       width: double.infinity,
@@ -344,7 +676,6 @@ class _BmiScreenState extends State<BmiScreen> {
             ),
           ),
           
-          // --- BAHAGIAN SEKSYEN BARU: MAKLUMAT TAMBAHAN UNTUK KEPUTUSAN ---
           const SizedBox(height: 30),
           const Align(
             alignment: Alignment.centerLeft,

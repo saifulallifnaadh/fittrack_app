@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // <--- TUKAR KE FIREBASE AUTH
 import 'dashboard_screen.dart'; 
 import 'signup_screen.dart'; 
 
@@ -19,7 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isObscure = true; 
   bool _isLoading = false; 
 
-  // FUNGSI LOG MASUK MENGGUNAKAN EMAIL
+  // --- FUNGSI LOG MASUK (FIREBASE AUTH) ---
   Future<void> _handleLogin() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
@@ -30,40 +30,32 @@ class _LoginScreenState extends State<LoginScreen> {
         String enteredEmail = _emailController.text.trim();
         String enteredPassword = _passwordController.text.trim();
 
-        QuerySnapshot querySnapshot = await FirebaseFirestore.instance
-            .collection('USER')
-            .where('email', isEqualTo: enteredEmail)
-            .limit(1)
-            .get();
+        // Firebase menguruskan pemeriksaan e-mel dan kata laluan
+        final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: enteredEmail,
+          password: enteredPassword,
+        );
 
         if (mounted) {
-          if (querySnapshot.docs.isNotEmpty) {
-            DocumentSnapshot userDoc = querySnapshot.docs.first;
-            Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
-            
-            if (userData['password'] == enteredPassword) {
-              String userId = userDoc.id;
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Login successful!'), backgroundColor: Colors.green),
-              );
-              
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => DashboardScreen(userId: userId),
-                ),
-              );
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Incorrect password. Please try again.'), backgroundColor: Colors.red),
-              );
-            }
-          } else {
+          if (userCredential.user != null) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Email not found. Please Sign Up first.'), backgroundColor: Colors.orange),
+              const SnackBar(content: Text('Login successful! Welcome back.'), backgroundColor: Colors.green),
+            );
+            
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => DashboardScreen(userId: userCredential.user!.uid), // Firebase guna .uid
+              ),
             );
           }
+        }
+      } on FirebaseAuthException catch (e) {
+        // Tangkap ralat spesifik dari Firebase (contoh: Salah password, email tak wujud)
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.message ?? 'Authentication failed.'), backgroundColor: Colors.red),
+          );
         }
       } catch (e) {
         if (mounted) {
@@ -81,114 +73,50 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // --- FUNGSI FORGOT PASSWORD BARU (VERIFY EMAIL + PHONE) ---
+  // --- FUNGSI FORGOT PASSWORD (FIREBASE RESET LINK) ---
   void _showForgotPasswordDialog() {
     final forgotFormKey = GlobalKey<FormState>();
     final TextEditingController forgotEmailController = TextEditingController();
-    final TextEditingController forgotPhoneController = TextEditingController();
-    final TextEditingController newPasswordController = TextEditingController();
-    final TextEditingController confirmPasswordController = TextEditingController();
-
-    bool isVerified = false; // Status untuk check dah verify atau belum
     bool isDialogLoading = false;
-    String verifiedUserId = '';
-    bool obscureNew = true;
-    bool obscureConfirm = true;
 
     showDialog(
       context: context,
-      barrierDismissible: false, // User kena tekan cancel, tak boleh klik luar
+      barrierDismissible: false, 
       builder: (context) {
-        // StatefulBuilder digunakan supaya popup dialog ni boleh berubah interface dia
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
               backgroundColor: const Color(0xFF131A26),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: Row(
+              title: const Row(
                 children: [
-                  Icon(isVerified ? Icons.lock_reset : Icons.security, color: const Color(0xFF00E5FF)),
-                  const SizedBox(width: 10),
-                  Text(isVerified ? 'Create New Password' : 'Verify Account', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  Icon(Icons.lock_reset, color: Color(0xFF00E5FF)),
+                  SizedBox(width: 10),
+                  Text('Reset Password', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                 ],
               ),
-              content: SingleChildScrollView(
-                child: Form(
-                  key: forgotFormKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        isVerified 
-                          ? 'Authentication successful. Please enter your new password below.'
-                          : 'Enter your registered email and phone number to verify your identity.',
-                        style: const TextStyle(color: Colors.grey, fontSize: 14),
-                      ),
-                      const SizedBox(height: 20),
-                      
-                      // JIKA BELUM VERIFY: Tunjuk input Email & Nombor Telefon
-                      if (!isVerified) ...[
-                        const Text('Email Address', style: TextStyle(color: Colors.white, fontSize: 13)),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: forgotEmailController,
-                          style: const TextStyle(color: Colors.white),
-                          keyboardType: TextInputType.emailAddress,
-                          decoration: _buildInputDecoration(hint: 'example@mail.com', icon: Icons.email_outlined),
-                          validator: (value) => value!.isEmpty ? 'Required' : null,
-                        ),
-                        const SizedBox(height: 16),
-
-                        const Text('Phone Number', style: TextStyle(color: Colors.white, fontSize: 13)),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: forgotPhoneController,
-                          style: const TextStyle(color: Colors.white),
-                          keyboardType: TextInputType.phone,
-                          decoration: _buildInputDecoration(hint: 'e.g. 0123456789', icon: Icons.phone_android_outlined),
-                          validator: (value) => value!.isEmpty ? 'Required' : null,
-                        ),
-                      ] 
-                      // JIKA DAH VERIFY: Tunjuk input Password Baru
-                      else ...[
-                        const Text('New Password', style: TextStyle(color: Colors.white, fontSize: 13)),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: newPasswordController,
-                          obscureText: obscureNew,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: _buildInputDecoration(hint: 'New Password', icon: Icons.lock_outline).copyWith(
-                            suffixIcon: IconButton(
-                              icon: Icon(obscureNew ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: Colors.grey),
-                              onPressed: () => setStateDialog(() => obscureNew = !obscureNew),
-                            ),
-                          ),
-                          validator: (value) => value!.isEmpty ? 'Required' : null,
-                        ),
-                        const SizedBox(height: 16),
-
-                        const Text('Confirm Password', style: TextStyle(color: Colors.white, fontSize: 13)),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: confirmPasswordController,
-                          obscureText: obscureConfirm,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: _buildInputDecoration(hint: 'Confirm Password', icon: Icons.lock_outline).copyWith(
-                            suffixIcon: IconButton(
-                              icon: Icon(obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: Colors.grey),
-                              onPressed: () => setStateDialog(() => obscureConfirm = !obscureConfirm),
-                            ),
-                          ),
-                          validator: (value) {
-                            if (value!.isEmpty) return 'Required';
-                            if (value != newPasswordController.text) return 'Passwords do not match';
-                            return null;
-                          },
-                        ),
-                      ],
-                    ],
-                  ),
+              content: Form(
+                key: forgotFormKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Enter your registered email. We will send a secure password reset link to your inbox.',
+                      style: TextStyle(color: Colors.grey, fontSize: 14),
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    const Text('Email Address', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: forgotEmailController,
+                      style: const TextStyle(color: Colors.white),
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: _buildInputDecoration(hint: 'example@mail.com', icon: Icons.email_outlined),
+                      validator: (value) => value!.isEmpty ? 'Required' : null,
+                    ),
+                  ],
                 ),
               ),
               actions: [
@@ -204,67 +132,35 @@ class _LoginScreenState extends State<LoginScreen> {
                   onPressed: isDialogLoading ? null : () async {
                     if (forgotFormKey.currentState!.validate()) {
                       setStateDialog(() => isDialogLoading = true);
+                      
+                      try {
+                        // Tembak fungsi hantar e-mel reset password Firebase
+                        await FirebaseAuth.instance.sendPasswordResetEmail(
+                          email: forgotEmailController.text.trim(),
+                        );
 
-                      // FASA 1: PROSES VERIFY DALAM FIREBASE
-                      if (!isVerified) {
-                        try {
-                          String email = forgotEmailController.text.trim();
-                          String phone = forgotPhoneController.text.trim();
-
-                          // Tembak Firebase: Cari akaun yang ada Email DAN Phone Number ni
-                          QuerySnapshot query = await FirebaseFirestore.instance
-                              .collection('USER')
-                              .where('email', isEqualTo: email)
-                              .where('phone_number', isEqualTo: phone)
-                              .limit(1)
-                              .get();
-
-                          if (query.docs.isNotEmpty) {
-                            // Akaun Dijumpai! Tukar state ke bahagian Password Baru
-                            setStateDialog(() {
-                              isVerified = true;
-                              verifiedUserId = query.docs.first.id; // Simpan ID untuk update nanti
-                              isDialogLoading = false;
-                            });
-                          } else {
-                            // Akaun Tak Dijumpai / Salah Detail
-                            setStateDialog(() => isDialogLoading = false);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Account not found. Please check your details.'), backgroundColor: Colors.red),
-                            );
-                          }
-                        } catch (e) {
-                          setStateDialog(() => isDialogLoading = false);
+                        if (mounted) {
+                          Navigator.pop(context); 
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                            const SnackBar(content: Text('Password reset link sent! Please check your email.'), backgroundColor: Colors.green),
                           );
                         }
-                      } 
-                      // FASA 2: PROSES UPDATE PASSWORD BARU
-                      else {
-                        try {
-                          // Update password baru ke dalam Firebase
-                          await FirebaseFirestore.instance
-                              .collection('USER')
-                              .doc(verifiedUserId)
-                              .update({'password': newPasswordController.text.trim()});
-
-                          Navigator.pop(context); // Tutup dialog
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Password updated successfully! You can now log in.'), backgroundColor: Colors.green),
-                          );
-                        } catch (e) {
-                          setStateDialog(() => isDialogLoading = false);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Failed to update: $e'), backgroundColor: Colors.red),
-                          );
-                        }
+                      } on FirebaseAuthException catch (e) {
+                        setStateDialog(() => isDialogLoading = false);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(e.message ?? 'Failed to send reset link.'), backgroundColor: Colors.red),
+                        );
+                      } catch (e) {
+                        setStateDialog(() => isDialogLoading = false);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                        );
                       }
                     }
                   },
                   child: isDialogLoading 
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
-                    : Text(isVerified ? 'Update' : 'Verify', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                    : const Text('Send Link', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
                 ),
               ],
             );
@@ -349,11 +245,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 10),
 
-                  // --- FORGOT PASSWORD TERCETUS DI SINI ---
+                  // --- FORGOT PASSWORD ---
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: _showForgotPasswordDialog, // Panggil fungsi dialog tadi
+                      onPressed: _showForgotPasswordDialog, 
                       child: const Text('Forgot Password?', style: TextStyle(color: Color(0xFF00E5FF))),
                     ),
                   ),

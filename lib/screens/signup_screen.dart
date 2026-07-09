@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:firebase_auth/firebase_auth.dart'; // <--- FIREBASE AUTH
+import 'package:cloud_firestore/cloud_firestore.dart'; // <--- FIRESTORE DATABASE
 import 'dashboard_screen.dart'; 
 import 'login_screen.dart'; 
 
@@ -30,16 +31,26 @@ class _SignUpScreenState extends State<SignUpScreen> {
       });
 
       try {
-        String userId = _usernameController.text.trim();
+        // 1. Daftar masuk Firebase Auth
+        final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
 
-        await FirebaseFirestore.instance.collection('USER').doc(userId).set({
-          'user_id': userId,
+        final user = userCredential.user;
+
+        if (user == null) {
+          throw Exception("Failed to create account");
+        }
+
+        // 2. Simpan maklumat tambahan ke dalam koleksi 'users' di Firestore
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'id': user.uid, // Pautkan ID dari auth Firebase
+          'username': _usernameController.text.trim(),
           'name': _nameController.text.trim(),
           'age': int.tryParse(_ageController.text.trim()) ?? 0,
           'phone_number': _phoneController.text.trim(),
           'email': _emailController.text.trim(),
-          'password': _passwordController.text.trim(), 
-          'created_at': FieldValue.serverTimestamp(),
         });
 
         if (mounted) {
@@ -53,7 +64,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (context) => DashboardScreen(userId: userId),
+              builder: (context) => DashboardScreen(userId: user.uid),
+            ),
+          );
+        }
+      } on FirebaseAuthException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.message ?? 'Sign up failed.'),
+              backgroundColor: Colors.red,
             ),
           );
         }
@@ -67,6 +87,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           );
         }
       } finally {
+        // 3. WAJIB ADA: Berhentikan animasi loading tak kira berjaya atau gagal
         if (mounted) {
           setState(() {
             _isLoading = false;
@@ -217,7 +238,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         onPressed: () => setState(() => _isObscure = !_isObscure),
                       ),
                     ),
-                    validator: (value) => value!.isEmpty ? 'Required' : null,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) return 'Required';
+                      if (value.length < 6) return 'Password must be at least 6 characters';
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 40),
 
