@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Wajib tambah ni untuk semak data user
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'profile_screen.dart';
 import 'login_screen.dart';
 
@@ -30,6 +30,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       'change_pw': 'Change Password',
       'subs': 'Subscription',
       'upgrade': 'Upgrade to Premium',
+      'premium_benefits': 'Premium Benefits:',
+      'feat_1': 'Ad-free Experience',
+      'feat_2': 'Advanced Progress Analytics',
+      'feat_3': 'Custom Diet & Workout Plans',
+      'feat_4': 'Priority Developer Support',
       'monthly': 'Monthly Plan (RM 15/mo)',
       'yearly': 'Yearly Plan (RM 120/yr)',
       'choose_plan': 'Choose Your Plan',
@@ -64,6 +69,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       'change_pw': 'Tukar Kata Laluan',
       'subs': 'Langganan',
       'upgrade': 'Naik Taraf Premium',
+      'premium_benefits': 'Kelebihan Premium:',
+      'feat_1': 'Pengalaman Tanpa Iklan',
+      'feat_2': 'Analisis Progres Lanjutan',
+      'feat_3': 'Pelan Pemakanan & Latihan Tersuai',
+      'feat_4': 'Sokongan Keutamaan',
       'monthly': 'Pelan Bulanan (RM 15/bln)',
       'yearly': 'Pelan Tahunan (RM 120/thn)',
       'choose_plan': 'Pilih Pelan Anda',
@@ -288,7 +298,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF131A26),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: const Color(0xFF00E5FF).withOpacity(0.5))),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: const Color(0xFF00E5FF).withValues(alpha: 0.5))),
         title: Row(
           children: [
             const Icon(Icons.support_agent, color: Color(0xFF00E5FF), size: 28),
@@ -310,7 +320,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // --- POPUP PILIH SUBSCRIPTION ---
+  // --- POPUP PILIH SUBSCRIPTION (DITAMBAH BAIK) ---
   void _showSubscriptionDialog() {
     showDialog(
       context: context,
@@ -318,16 +328,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
         backgroundColor: const Color(0xFF131A26),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.amber, width: 1)),
         title: Text(t('choose_plan'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.workspace_premium, color: Colors.amber, size: 50),
-            const SizedBox(height: 20),
-            _buildPlanOption(t('monthly'), 'Monthly Premium'),
-            const SizedBox(height: 10),
-            _buildPlanOption(t('yearly'), 'Yearly Premium'),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.workspace_premium, color: Colors.amber, size: 60),
+              const SizedBox(height: 15),
+              // Senarai kelebihan Premium
+              Text(t('premium_benefits'), style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 15),
+              _buildBenefitItem(t('feat_1')),
+              _buildBenefitItem(t('feat_2')),
+              _buildBenefitItem(t('feat_3')),
+              _buildBenefitItem(t('feat_4')),
+              const SizedBox(height: 25),
+              // Pilihan Pelan
+              _buildPlanOption(t('monthly'), 'Monthly Premium'),
+              const SizedBox(height: 10),
+              _buildPlanOption(t('yearly'), 'Yearly Premium'),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildBenefitItem(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.check_circle, color: Colors.amber, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.3)),
+          ),
+        ],
       ),
     );
   }
@@ -343,7 +380,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 15),
         decoration: BoxDecoration(
-          color: Colors.amber.withOpacity(0.1),
+          color: Colors.amber.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(15),
           border: Border.all(color: Colors.amber),
         ),
@@ -377,7 +414,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   decoration: BoxDecoration(
                     color: const Color(0xFF090E17),
                     borderRadius: BorderRadius.circular(15),
-                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                    border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -490,7 +527,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildListTile(t('edit_profile'), Icons.person_outline, () {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => ProfileScreen(userId: widget.userId)));
               }),
-              // PAUTKAN KE FUNGSI VERIFY, BUKAN TERUS KE PASSWORD
               _buildListTile(t('change_pw'), Icons.lock_outline, _showVerificationDialog),
               
               const SizedBox(height: 25),
@@ -503,8 +539,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF131A26),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: _isPremium ? Colors.amber : Colors.grey.withOpacity(0.2)),
-                  boxShadow: _isPremium ? [BoxShadow(color: Colors.amber.withOpacity(0.1), blurRadius: 20, spreadRadius: 1)] : [],
+                  border: Border.all(color: _isPremium ? Colors.amber : Colors.grey.withValues(alpha: 0.2)),
+                  boxShadow: _isPremium ? [BoxShadow(color: Colors.amber.withValues(alpha: 0.1), blurRadius: 20, spreadRadius: 1)] : [],
                 ),
                 child: Column(
                   children: [
@@ -564,7 +600,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF131A26),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.3)),
+                  border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.3)),
                 ),
                 child: Column(
                   children: [
@@ -643,7 +679,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 15)),
         value: value,
-        activeColor: const Color(0xFF00E5FF),
+        activeThumbColor: const Color(0xFF00E5FF),
         onChanged: onChanged,
       ),
     );

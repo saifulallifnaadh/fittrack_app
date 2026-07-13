@@ -335,7 +335,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         Container(
                           width: 130, height: 130,
-                          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFF03A9F4).withOpacity(0.4), width: 2), boxShadow: [BoxShadow(color: const Color(0xFF03A9F4).withOpacity(0.1), blurRadius: 15, spreadRadius: 2)]),
+                          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFF03A9F4).withValues(alpha: 0.4), width: 2), boxShadow: [BoxShadow(color: const Color(0xFF03A9F4).withValues(alpha: 0.1), blurRadius: 15, spreadRadius: 2)]),
                         ),
                         CircleAvatar(
                           radius: 60,
@@ -344,7 +344,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: (_imageUrl == null && !_isLoading) ? const Icon(Icons.person, size: 60, color: Colors.grey) : null,
                         ),
                         if (_isLoading)
-                          Container(width: 120, height: 120, decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), shape: BoxShape.circle), child: const Center(child: CircularProgressIndicator(color: Color(0xFF03A9F4)))),
+                          Container(width: 120, height: 120, decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), shape: BoxShape.circle), child: const Center(child: CircularProgressIndicator(color: Color(0xFF03A9F4)))),
                         Positioned(
                           bottom: 0, right: 5,
                           child: Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: Color(0xFF03A9F4), shape: BoxShape.circle), child: const Icon(Icons.camera_alt, color: Colors.black, size: 16)),
@@ -382,7 +382,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               
               ListTile(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                tileColor: Colors.redAccent.withOpacity(0.1),
+                tileColor: Colors.redAccent.withValues(alpha: 0.1),
                 leading: const Icon(Icons.logout, color: Colors.redAccent),
                 title: const Text('Log Out', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
                 onTap: _handleLogout,

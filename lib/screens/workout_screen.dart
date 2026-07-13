@@ -31,9 +31,32 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
   // --- FUNGSI UPDATE KE FIRESTORE ---
   Future<void> _toggleExercise(int index, List<dynamic> currentList) async {
-    currentList[index]['isCompleted'] = !currentList[index]['isCompleted'];
-    await FirebaseFirestore.instance.collection('users').doc(userId).set({
-      'exercises': currentList, // Simpan terus seluruh list ke database
+    // 1. Buat salinan (deep copy) supaya state betul-betul dikemaskini
+    List<dynamic> updatedList = List.from(currentList);
+    updatedList[index] = Map<String, dynamic>.from(updatedList[index]);
+    updatedList[index]['isCompleted'] = !updatedList[index]['isCompleted'];
+    
+    // Dapatkan tarikh hari ini
+    final now = DateTime.now();
+    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+
+    // 2. Simpan ke dalam subcollection history
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('history') 
+        .doc(todayStr)         
+        .set({
+      'date': Timestamp.fromDate(now), 
+      'exercises': updatedList, 
+    }, SetOptions(merge: true));
+
+    // 3. [FIX] Update juga document utama supaya StreamBuilder refresh UI
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .set({
+      'exercises': updatedList,
     }, SetOptions(merge: true));
   }
 
@@ -65,7 +88,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Center(
-                    child: Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(10))),
+                    child: Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(10))),
                   ),
                   const SizedBox(height: 25),
                   const Text('Set Workout Reminder', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
@@ -138,7 +161,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                             decoration: BoxDecoration(
                               color: const Color(0xFF1D2633),
                               borderRadius: BorderRadius.circular(15),
-                              border: Border.all(color: Colors.grey.withOpacity(0.2)),
+                              border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -184,7 +207,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                             decoration: BoxDecoration(
                               color: const Color(0xFF1D2633),
                               borderRadius: BorderRadius.circular(15),
-                              border: Border.all(color: Colors.grey.withOpacity(0.2)),
+                              border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -212,7 +235,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                         backgroundColor: const Color(0xFF00E5FF),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                         elevation: 10,
-                        shadowColor: const Color(0xFF00E5FF).withOpacity(0.5),
+                        shadowColor: const Color(0xFF00E5FF).withValues(alpha: 0.5),
                       ),
                       onPressed: () {
                         Navigator.pop(context); 
@@ -273,7 +296,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(10))),
+              Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(10))),
               const SizedBox(height: 20),
               const Text('Add Gym Exercise', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 25),
@@ -334,18 +357,21 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                   ),
                   onPressed: () async {
                     if (nameCtrl.text.isNotEmpty && setsCtrl.text.isNotEmpty && repsCtrl.text.isNotEmpty) {
-                      // Tambah data ke dalam list semasa
-                      currentList.add({
+                      
+                      // [FIX] Buat salinan list untuk elak ralat memory reference
+                      List<dynamic> updatedList = List.from(currentList);
+                      
+                      updatedList.add({
                         'title': nameCtrl.text,
                         'detail1': '${setsCtrl.text} sets',
                         'detail2': '${repsCtrl.text} reps',
-                        'icon': 'fitness_center', // Guna string untuk simpan kat database
+                        'icon': 'fitness_center',
                         'isCompleted': false,
                       });
                       
                       // Simpan senarai baru ke Firebase
                       await FirebaseFirestore.instance.collection('users').doc(userId).set({
-                        'exercises': currentList,
+                        'exercises': updatedList,
                       }, SetOptions(merge: true));
 
                       if (context.mounted) Navigator.pop(context); 
@@ -389,7 +415,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
           final data = snapshot.data!.data() as Map<String, dynamic>?;
           
           // Ambil senarai senaman dari database, kalau kosong guna default
-          List<dynamic> exercises = (data != null && data.containsKey('exercises')) 
+          List<dynamic> exercises = (data != null && data.containsKey('exercises') && data['exercises'] != null) 
               ? data['exercises'] 
               : defaultExercises;
 
@@ -435,6 +461,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                       ),
                       onPressed: () => _showAddGymExerciseForm(exercises),
+                      
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -484,9 +511,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               decoration: BoxDecoration(
                 color: isSelected ? const Color(0xFF7B2CBF) : Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: isSelected ? Colors.transparent : Colors.grey.withOpacity(0.2)),
+                border: Border.all(color: isSelected ? Colors.transparent : Colors.grey.withValues(alpha: 0.2)),
                 boxShadow: isSelected 
-                    ? [BoxShadow(color: const Color(0xFF7B2CBF).withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))] 
+                    ? [BoxShadow(color: const Color(0xFF7B2CBF).withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0, 4))] 
                     : [], 
               ),
               child: Column(
@@ -510,9 +537,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF161626), 
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF9D50BB).withOpacity(0.2)),
+        border: Border.all(color: const Color(0xFF9D50BB).withValues(alpha: 0.2)),
         boxShadow: [
-          BoxShadow(color: const Color(0xFF7B2CBF).withOpacity(0.1), blurRadius: 20, spreadRadius: 2),
+          BoxShadow(color: const Color(0xFF7B2CBF).withValues(alpha: 0.1), blurRadius: 20, spreadRadius: 2),
         ],
       ),
       child: Row(
@@ -526,7 +553,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 CircularProgressIndicator(
                   value: progressVal,
                   strokeWidth: 6,
-                  backgroundColor: Colors.grey.withOpacity(0.2),
+                  backgroundColor: Colors.grey.withValues(alpha: 0.2),
                   valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF9D50BB)),
                 ),
                 Center(
@@ -554,8 +581,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
   Widget _buildExerciseTile(int index, List<dynamic> currentList) {
     final exercise = currentList[index];
-    bool isDone = exercise['isCompleted'];
-    IconData actualIcon = _getIconData(exercise['icon']);
+    bool isDone = exercise['isCompleted'] ?? false;
+    IconData actualIcon = _getIconData(exercise['icon'] ?? 'fitness_center');
 
     return GestureDetector(
       onTap: () => _toggleExercise(index, currentList), 
@@ -566,8 +593,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFF131A26),
           borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: isDone ? const Color(0xFF9D50BB).withOpacity(0.5) : Colors.grey.withOpacity(0.1)),
-          boxShadow: isDone ? [BoxShadow(color: const Color(0xFF9D50BB).withOpacity(0.1), blurRadius: 10)] : [],
+          border: Border.all(color: isDone ? const Color(0xFF9D50BB).withValues(alpha: 0.5) : Colors.grey.withValues(alpha: 0.1)),
+          boxShadow: isDone ? [BoxShadow(color: const Color(0xFF9D50BB).withValues(alpha: 0.1), blurRadius: 10)] : [],
         ),
         child: Row(
           children: [
@@ -595,20 +622,20 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                       fontWeight: FontWeight.bold,
                       decoration: isDone ? TextDecoration.lineThrough : TextDecoration.none,
                     ),
-                    child: Text(exercise['title']),
+                    child: Text(exercise['title'] ?? ''),
                   ),
                   const SizedBox(height: 5),
                   Row(
                     children: [
                       const Icon(Icons.access_time, color: Colors.grey, size: 12),
                       const SizedBox(width: 4),
-                      Text(exercise['detail1'], style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                      Text(exercise['detail1'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                       const SizedBox(width: 10),
                       const Text('|', style: TextStyle(color: Colors.grey, fontSize: 12)),
                       const SizedBox(width: 10),
                       const Icon(Icons.repeat, color: Colors.grey, size: 12),
                       const SizedBox(width: 4),
-                      Text(exercise['detail2'], style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                      Text(exercise['detail2'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                     ],
                   ),
                 ],

@@ -111,7 +111,7 @@ class _BmiScreenState extends State<BmiScreen> {
                       height: 5,
                       margin: const EdgeInsets.only(bottom: 20),
                       decoration: BoxDecoration(
-                        color: Colors.grey.withOpacity(0.3), 
+                        color: Colors.grey.withValues(alpha: 0.3), 
                         borderRadius: BorderRadius.circular(10)
                       ),
                     ),
@@ -134,8 +134,9 @@ class _BmiScreenState extends State<BmiScreen> {
     TextEditingController ctrl2 = TextEditingController(); 
 
     if (isHeight) {
-       if (_isMetric) ctrl1.text = _heightCm.toInt().toString();
-       else {
+       if (_isMetric) {
+         ctrl1.text = _heightCm.toInt().toString();
+       } else {
           ctrl1.text = (_heightInches ~/ 12).toString();
           ctrl2.text = (_heightInches % 12).toInt().toString();
        }
@@ -254,7 +255,7 @@ class _BmiScreenState extends State<BmiScreen> {
                 child: Container(
                   width: 50,
                   height: 5,
-                  decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(10)),
+                  decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(10)),
                 ),
               ),
               const SizedBox(height: 20),
@@ -328,7 +329,7 @@ class _BmiScreenState extends State<BmiScreen> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF131A26),
                   borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: Colors.grey.withOpacity(0.2)),
+                  border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
                 ),
                 child: Row(
                   children: [
@@ -418,7 +419,7 @@ class _BmiScreenState extends State<BmiScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF131A26),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.withOpacity(0.1)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
       ),
       child: Column(
         children: [
@@ -456,9 +457,9 @@ class _BmiScreenState extends State<BmiScreen> {
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     activeTrackColor: const Color(0xFF00E5FF),
-                    inactiveTrackColor: Colors.grey.withOpacity(0.3),
+                    inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
                     thumbColor: const Color(0xFF00E5FF),
-                    overlayColor: const Color(0xFF00E5FF).withOpacity(0.2),
+                    overlayColor: const Color(0xFF00E5FF).withValues(alpha: 0.2),
                     trackHeight: 4,
                   ),
                   child: Slider(
@@ -468,8 +469,11 @@ class _BmiScreenState extends State<BmiScreen> {
                     onChanged: (newValue) {
                       setState(() {
                         _bmiValue = null; 
-                        if (_isMetric) _heightCm = newValue;
-                        else _heightInches = newValue;
+                        if (_isMetric) {
+                          _heightCm = newValue;
+                        } else {
+                          _heightInches = newValue;
+                        }
                       });
                     },
                   ),
@@ -499,7 +503,7 @@ class _BmiScreenState extends State<BmiScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF131A26),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.withOpacity(0.1)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
       ),
       child: Column(
         children: [
@@ -537,9 +541,9 @@ class _BmiScreenState extends State<BmiScreen> {
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     activeTrackColor: const Color(0xFF00E5FF),
-                    inactiveTrackColor: Colors.grey.withOpacity(0.3),
+                    inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
                     thumbColor: const Color(0xFF00E5FF),
-                    overlayColor: const Color(0xFF00E5FF).withOpacity(0.2),
+                    overlayColor: const Color(0xFF00E5FF).withValues(alpha: 0.2),
                     trackHeight: 4,
                   ),
                   child: Slider(
@@ -549,8 +553,11 @@ class _BmiScreenState extends State<BmiScreen> {
                     onChanged: (newValue) {
                       setState(() {
                         _bmiValue = null; 
-                        if (_isMetric) _weightKg = newValue;
-                        else _weightLbs = newValue;
+                        if (_isMetric) {
+                          _weightKg = newValue;
+                        } else {
+                          _weightLbs = newValue;
+                        }
                       });
                     },
                   ),
@@ -597,7 +604,7 @@ class _BmiScreenState extends State<BmiScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF131A26),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.3)),
+        border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [
@@ -607,7 +614,7 @@ class _BmiScreenState extends State<BmiScreen> {
               const Text('Your BMI', style: TextStyle(color: Colors.grey, fontSize: 14)),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: _bmiColor.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(color: _bmiColor.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
                 child: Row(
                   children: [
                     Container(width: 8, height: 8, decoration: BoxDecoration(color: _bmiColor, shape: BoxShape.circle)),

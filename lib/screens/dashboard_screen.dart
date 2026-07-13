@@ -7,9 +7,7 @@ import 'workout_screen.dart';
 import 'gps_tracking_screen.dart';
 import 'water_screen.dart';
 import 'history_screen.dart';
-import 'settings_screen.dart'; // <--- Wajib ada kat atas sekali
-
-
+import 'settings_screen.dart'; 
 
 class DashboardScreen extends StatefulWidget {
   final String userId; 
@@ -52,14 +50,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // --- SENARAI SKRIN UNTUK TAB NAVIGASI ---
     final List<Widget> pages = [
       _buildDashboardHome(screenHeight, screenWidth), // Tab 0: Home
-      ProgressScreen(),
-      HistoryScreen(),                         // Tab 2: History
+      const ProgressScreen(),
+      const HistoryScreen(),                          // Tab 2: Summary/History
       SettingsScreen(userId: widget.userId),
     ];
 
     return Scaffold(
       backgroundColor: const Color(0xFF090E17),
-      // Gunakan IndexedStack supaya state/data tak hilang bila tukar tab
       body: IndexedStack(
         index: _selectedIndex,
         children: pages,
@@ -85,15 +82,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // --- KANDUNGAN ASAL DASHBOARD (VERSI FIRESTORE + CLOUDINARY) ---
+  // --- KANDUNGAN ASAL DASHBOARD (SYNC SECARA LIVE DENGAN STREAMBUILDER) ---
   Widget _buildDashboardHome(double screenHeight, double screenWidth) {
     return SafeArea(
-      child: FutureBuilder<DocumentSnapshot>(
-        // Tembak pangkalan data Firestore koleksi 'users'
-        future: FirebaseFirestore.instance
+      child: StreamBuilder<DocumentSnapshot>(
+        // Guna .snapshots() untuk Live Sync
+        stream: FirebaseFirestore.instance
             .collection('users')
             .doc(widget.userId)
-            .get(),
+            .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator(color: Color(0xFF00E5FF)));
@@ -101,10 +98,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           String displayName = "User";
           String initial = "U";
-          String? profileImageUrl; // <-- Variabel baru untuk simpan URL gambar
+          String? profileImageUrl; 
+          
+          // Data untuk Progress Sync
+          int waterIntake = 0;
+          int completedWorkouts = 0;
+          int totalWorkouts = 3;
+          int caloriesBurned = 0;
 
           if (snapshot.hasData && snapshot.data != null && snapshot.data!.exists) {
             final data = snapshot.data!.data() as Map<String, dynamic>; 
+            
+            // Uruskan Nama & Gambar Profil
             if (data.containsKey('name') && data['name'] != null) {
               String fetchedName = data['name'].toString().trim();
               if (fetchedName.isNotEmpty) {
@@ -113,11 +118,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 initial = displayName[0].toUpperCase();
               }
             }
-            // Tarik URL gambar kalau wujud dalam Firestore
             if (data.containsKey('profile_image_url') && data['profile_image_url'] != null) {
               profileImageUrl = data['profile_image_url'];
             }
+
+            // --- TANGKAP DATA UNTUK PROGRESS SYNC ---
+            // 1. Data Air
+            waterIntake = data.containsKey('water_intake') ? data['water_intake'] : 0;
+            
+            // 2. Data Senaman
+            List<dynamic> exercises = data.containsKey('exercises') ? data['exercises'] : [];
+            completedWorkouts = exercises.where((e) => e['isCompleted'] == true).length;
+            totalWorkouts = exercises.isEmpty ? 3 : exercises.length;
+
+            // 3. Data Kalori (Simulasi dinamik berdasarkan jumlah senaman siap)
+            caloriesBurned = data.containsKey('calories_burned') ? data['calories_burned'] : (completedWorkouts * 120);
           }
+
+          // Format Air dari ml ke Liter
+          String waterDisplay = (waterIntake / 1000).toStringAsFixed(1);
 
           return SingleChildScrollView(
             padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.065, vertical: screenHeight * 0.02),
@@ -142,7 +161,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child: CircleAvatar(
                         radius: 25,
                         backgroundColor: const Color(0xFF00E5FF),
-                        // Gunakan gambar dari web jika ada, jika tidak, tunjuk huruf awal (initial)
                         backgroundImage: profileImageUrl != null ? NetworkImage(profileImageUrl) : null,
                         child: profileImageUrl == null 
                             ? Text(initial, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 20)) 
@@ -177,7 +195,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             Row(children: [const Icon(Icons.lightbulb_outline, color: Colors.white, size: 20), const SizedBox(width: 8), Text(tip['title'] as String, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500))]),
                             const SizedBox(height: 10),
                             Text(tip['desc'] as String, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                            Text(tip['sub'] as String, style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14)),
+                            Text(tip['sub'] as String, style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 14)),
                           ],
                         ),
                       );
@@ -187,7 +205,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                 SizedBox(height: screenHeight * 0.03),
 
-                // --- YOUR PROGRESS ---
+                // --- YOUR PROGRESS (LIVE SYNC DATA) ---
                 const Text('Your Progress', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 15),
                 Container(
@@ -196,9 +214,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      _buildMiniProgress(Icons.local_fire_department, const Color(0xFFFF9800), 'Calories', '350', '/ 2k kcal'),
-                      _buildMiniProgress(Icons.fitness_center, const Color(0xFF9D50BB), 'Workouts', '3', '/ 5 week'),
-                      _buildMiniProgress(Icons.water_drop, const Color(0xFF03A9F4), 'Water', '1.5 L', '/ 2.5 L'),
+                      _buildMiniProgress(Icons.local_fire_department, const Color(0xFFFF9800), 'Calories', '$caloriesBurned', '/ 2k kcal'),
+                      _buildMiniProgress(Icons.fitness_center, const Color(0xFF9D50BB), 'Workouts', '$completedWorkouts', '/ $totalWorkouts'),
+                      _buildMiniProgress(Icons.water_drop, const Color(0xFF03A9F4), 'Water', '$waterDisplay L', '/ 2.5 L'),
                     ],
                   ),
                 ),
@@ -257,7 +275,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // --- WIDGET KAD MODUL INTERAKTIF (BOLEH TEKAN) ---
+  // --- WIDGET KAD MODUL INTERAKTIF ---
   Widget _buildModuleCard(
     BuildContext context, 
     String title, 
@@ -272,13 +290,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(24),
-        side: BorderSide(color: Colors.white.withOpacity(0.05)),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: InkWell(
         onTap: onTap, 
         borderRadius: BorderRadius.circular(24),
-        splashColor: color.withOpacity(0.1), 
-        highlightColor: color.withOpacity(0.05),
+        splashColor: color.withValues(alpha: 0.1), 
+        highlightColor: color.withValues(alpha: 0.05),
         child: Padding(
           padding: const EdgeInsets.all(20.0),
           child: Column(
@@ -288,7 +306,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, color: color, size: 28),
@@ -304,7 +322,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: TextStyle(color: Colors.grey.withOpacity(0.7), fontSize: 12),
+                    style: TextStyle(color: Colors.grey.withValues(alpha: 0.7), fontSize: 12),
                   ),
                 ],
               ),

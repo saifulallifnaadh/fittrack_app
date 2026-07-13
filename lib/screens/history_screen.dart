@@ -192,7 +192,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           backDrawRodData: BackgroundBarChartRodData(
             show: true,
             toY: 100, // Nilai maksimum graf latar belakang
-            color: const Color(0xFF131A26).withOpacity(0.5),
+            color: const Color(0xFF131A26).withValues(alpha: 0.5),
           ),
         ),
       ],

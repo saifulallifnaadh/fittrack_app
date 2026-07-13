@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';  
 
 class GpsTrackingScreen extends StatefulWidget {
   const GpsTrackingScreen({super.key});
@@ -200,9 +202,31 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
-            onPressed: () {
-              Navigator.pop(context); 
-              Navigator.pop(context); 
+            onPressed: () async {
+              final String? userId = FirebaseAuth.instance.currentUser?.uid;
+
+              if (userId != null) {
+                // 1. Dapatkan tarikh hari ini sebagai ID dokumen (cth: 2026-07-09)
+                final now = DateTime.now();
+                final String todayDateStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+
+                // 2. Simpan data ke dalam subcollection 'history' mengikut tarikh hari ini
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(userId)
+                    .collection('history')
+                    .doc(todayDateStr) // Dokumen dinamakan ikut tarikh supaya tak bertimbun
+                    .set({
+                  'date': Timestamp.fromDate(now), // Wajib ada untuk susunan (orderBy) dekat Progress Screen
+                  'run_distance': FieldValue.increment(_totalDistanceKm),
+                  'calories_burned': FieldValue.increment(_totalCalories),
+                }, SetOptions(merge: true)); // Merge supaya tak padam data air/workout yang dah ada pada hari yang sama
+              }
+
+              if (mounted) {
+                Navigator.pop(context); 
+                Navigator.pop(context); 
+              }
             },
             child: const Text('Save Workout', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
           ),
@@ -253,9 +277,9 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
               margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.3)),
+                border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.3)),
                 boxShadow: [
-                  BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.05), blurRadius: 20, spreadRadius: 5),
+                  BoxShadow(color: const Color(0xFF00E5FF).withValues(alpha: 0.05), blurRadius: 20, spreadRadius: 5),
                 ],
               ),
               child: ClipRRect(
@@ -306,7 +330,7 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
                                           height: 30 * _pulseAnimation.value,
                                           decoration: BoxDecoration(
                                             shape: BoxShape.circle,
-                                            color: const Color(0xFF00E5FF).withOpacity(1.0 - (_pulseAnimation.value - 0.5)),
+                                            color: const Color(0xFF00E5FF).withValues(alpha: 1.0 - (_pulseAnimation.value - 0.5)),
                                           ),
                                         ),
                                         // Dot Tengah Solid
@@ -317,7 +341,7 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
                                             color: const Color(0xFF00E5FF),
                                             shape: BoxShape.circle,
                                             border: Border.all(color: Colors.white, width: 3),
-                                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 5)],
+                                            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 5)],
                                           ),
                                         ),
                                       ],
@@ -333,7 +357,7 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
                     // OVERLAY: Paparan Loading jika GPS belum ditemui
                     if (!_hasLocation)
                       Container(
-                        color: const Color(0xFF131A26).withOpacity(0.8),
+                        color: const Color(0xFF131A26).withValues(alpha: 0.8),
                         child: const Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -356,7 +380,7 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
                           // Butang Zoom In
                           FloatingActionButton.small(
                             heroTag: 'zoomIn',
-                            backgroundColor: const Color(0xFF1D2633).withOpacity(0.9),
+                            backgroundColor: const Color(0xFF1D2633).withValues(alpha: 0.9),
                             onPressed: () {
                               _animatedMapMove(_mapController.camera.center, _mapController.camera.zoom + 1);
                             },
@@ -366,7 +390,7 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
                           // Butang Zoom Out
                           FloatingActionButton.small(
                             heroTag: 'zoomOut',
-                            backgroundColor: const Color(0xFF1D2633).withOpacity(0.9),
+                            backgroundColor: const Color(0xFF1D2633).withValues(alpha: 0.9),
                             onPressed: () {
                               _animatedMapMove(_mapController.camera.center, _mapController.camera.zoom - 1);
                             },
@@ -441,7 +465,7 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
                             decoration: BoxDecoration(
                               color: const Color(0xFF1D2633),
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                              border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
                             ),
                             child: Icon(_isRunning ? Icons.pause : Icons.play_arrow, color: Colors.white, size: 30),
                           ),
@@ -454,7 +478,7 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
                             width: 70,
                             height: 70,
                             decoration: BoxDecoration(
-                              color: Colors.redAccent.withOpacity(0.2),
+                              color: Colors.redAccent.withValues(alpha: 0.2),
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.redAccent),
                             ),
@@ -488,7 +512,7 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
                                 // Bayang-bayang hilang bila ditekan (menjadikan efek ditekan ke dalam)
                                 boxShadow: _isStartPressed
                                     ? [] 
-                                    : [BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 5))],
+                                    : [BoxShadow(color: const Color(0xFF00E5FF).withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 5))],
                               ),
                               child: const Row(
                                 mainAxisAlignment: MainAxisAlignment.center,

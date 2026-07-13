@@ -11,34 +11,67 @@ class WaterScreen extends StatefulWidget {
 
 class _WaterScreenState extends State<WaterScreen> {
   final String userId = FirebaseAuth.instance.currentUser!.uid;
-  final int dailyGoal = 2500; // Sasaran 2.5L sehari
+  final int dailyGoal = 2500; 
 
-  // Fungsi untuk tambah air ke Firestore
+  // --- DAPATKAN TARIKH HARI INI ---
+  String get _todayStr {
+    final now = DateTime.now();
+    return "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+  }
+
   Future<void> _addWater(int amount, int currentWater) async {
     int newTotal = currentWater + amount;
     
     try {
-      await FirebaseFirestore.instance.collection('users').doc(userId).set({
+      // HANTAR KE FOLDER HISTORY (SYNC DENGAN PROGRESS & DASHBOARD)
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('history')
+          .doc(_todayStr)
+          .set({
         'water_intake': newTotal,
-      }, SetOptions(merge: true)); // Guna merge supaya data lain (nama/umur) tak hilang
+        'date': Timestamp.fromDate(DateTime.now()), // Wajib ada untuk Progress History
+      }, SetOptions(merge: true)); 
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Added $amount ml of water!'),
-          backgroundColor: Colors.blueAccent,
-          duration: const Duration(seconds: 1),
+          content: Row(
+            children: [
+              const Icon(Icons.water_drop, color: Colors.white),
+              const SizedBox(width: 10),
+              Text('Glug glug! Added $amount ml of water. 💧', style: const TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          backgroundColor: const Color(0xFF03A9F4),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         ));
       }
     } catch (e) {
-      print(e);
+      debugPrint(e.toString());
     }
   }
 
-  // Fungsi untuk reset air
   Future<void> _resetWater() async {
-    await FirebaseFirestore.instance.collection('users').doc(userId).set({
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('history')
+        .doc(_todayStr)
+        .set({
       'water_intake': 0,
+      'date': Timestamp.fromDate(DateTime.now()),
     }, SetOptions(merge: true));
+  }
+
+  String _getMotivationalText(double progress) {
+    if (progress == 0) return "Let's start hydrating!";
+    if (progress < 0.5) return "Good start! Keep drinking.";
+    if (progress < 0.8) return "You're halfway there! 🌊";
+    if (progress < 1.0) return "Almost at your daily goal!";
+    return "Goal Reached! You're fully hydrated! 🏆";
   }
 
   @override
@@ -52,77 +85,176 @@ class _WaterScreenState extends State<WaterScreen> {
         title: const Text('Water Tracker', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         centerTitle: true,
         actions: [
-          IconButton(icon: const Icon(Icons.refresh, color: Colors.grey), onPressed: _resetWater),
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.grey), 
+            onPressed: _resetWater,
+          ),
         ],
       ),
       body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
+        // BACA DARI FOLDER HISTORY
+        stream: FirebaseFirestore.instance.collection('users').doc(userId).collection('history').doc(_todayStr).snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Color(0xFF03A9F4)));
 
-          // Ambil jumlah air dari database (default 0 kalau belum wujud)
           final data = snapshot.data!.data() as Map<String, dynamic>?;
           int currentWater = data != null && data.containsKey('water_intake') ? data['water_intake'] : 0;
           
           double progress = currentWater / dailyGoal;
+          bool isGoalReached = progress >= 1.0;
           if (progress > 1.0) progress = 1.0;
 
-          return Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Visual Bulatan Air
-              Stack(
-                alignment: Alignment.center,
+          return SafeArea(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  SizedBox(
-                    width: 250, height: 250,
-                    child: CircularProgressIndicator(
-                      value: progress,
-                      strokeWidth: 20,
-                      backgroundColor: const Color(0xFF131A26),
-                      color: const Color(0xFF03A9F4),
-                      strokeCap: StrokeCap.round,
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 500),
+                    child: Text(
+                      _getMotivationalText(progress),
+                      key: ValueKey<String>(_getMotivationalText(progress)),
+                      style: TextStyle(
+                        color: isGoalReached ? Colors.greenAccent : Colors.grey,
+                        fontSize: 16,
+                        fontWeight: isGoalReached ? FontWeight.bold : FontWeight.normal,
+                      ),
                     ),
                   ),
-                  Column(
+                  const SizedBox(height: 40),
+
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0, end: progress),
+                    duration: const Duration(milliseconds: 800),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, animatedProgress, child) {
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          if (isGoalReached)
+                            Container(
+                              width: 260, height: 260,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(color: const Color(0xFF03A9F4).withOpacity(0.4), blurRadius: 40, spreadRadius: 10),
+                                ],
+                              ),
+                            ),
+                          SizedBox(
+                            width: 250, height: 250,
+                            child: CircularProgressIndicator(
+                              value: animatedProgress,
+                              strokeWidth: 20,
+                              backgroundColor: const Color(0xFF131A26),
+                              color: isGoalReached ? Colors.greenAccent : const Color(0xFF03A9F4),
+                              strokeCap: StrokeCap.round,
+                            ),
+                          ),
+                          Column(
+                            children: [
+                              Icon(
+                                isGoalReached ? Icons.local_drink : Icons.water_drop, 
+                                color: isGoalReached ? Colors.greenAccent : const Color(0xFF03A9F4), 
+                                size: 55
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                '${(animatedProgress * dailyGoal).toInt()} ml', 
+                                style: const TextStyle(color: Colors.white, fontSize: 38, fontWeight: FontWeight.bold)
+                              ),
+                              Text('/ $dailyGoal ml', style: const TextStyle(color: Colors.grey, fontSize: 16)),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 70),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      const Icon(Icons.water_drop, color: Color(0xFF03A9F4), size: 50),
-                      const SizedBox(height: 10),
-                      Text('$currentWater ml', style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
-                      Text('/ $dailyGoal ml', style: const TextStyle(color: Colors.grey, fontSize: 16)),
+                      BouncyWaterButton(
+                        label: '+ 250 ml',
+                        icon: Icons.local_drink_outlined,
+                        onTap: () => _addWater(250, currentWater),
+                      ),
+                      BouncyWaterButton(
+                        label: '+ 500 ml',
+                        icon: Icons.water_drop_outlined,
+                        onTap: () => _addWater(500, currentWater),
+                      ),
                     ],
                   ),
+                  const SizedBox(height: 20),
                 ],
               ),
-              const SizedBox(height: 60),
-
-              // Butang Tambah Air
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildAddButton('+ 250 ml', 250, currentWater),
-                  _buildAddButton('+ 500 ml', 500, currentWater),
-                ],
-              )
-            ],
+            ),
           );
         },
       ),
     );
   }
+}
 
-  Widget _buildAddButton(String label, int amount, int currentWater) {
-    return ElevatedButton(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF131A26),
-        padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Color(0xFF03A9F4), width: 1),
+class BouncyWaterButton extends StatefulWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const BouncyWaterButton({super.key, required this.label, required this.icon, required this.onTap});
+
+  @override
+  State<BouncyWaterButton> createState() => _BouncyWaterButtonState();
+}
+
+class _BouncyWaterButtonState extends State<BouncyWaterButton> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _isPressed = true),
+      onTapUp: (_) {
+        setState(() => _isPressed = false);
+        widget.onTap(); 
+      },
+      onTapCancel: () => setState(() => _isPressed = false),
+      child: AnimatedScale(
+        scale: _isPressed ? 0.90 : 1.0, 
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.easeInOut,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 100),
+          padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 15),
+          decoration: BoxDecoration(
+            color: _isPressed ? const Color(0xFF03A9F4).withOpacity(0.2) : const Color(0xFF131A26),
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(
+              color: _isPressed ? const Color(0xFF03A9F4) : const Color(0xFF03A9F4).withOpacity(0.5), 
+              width: 2
+            ),
+            boxShadow: _isPressed ? [] : [
+              BoxShadow(
+                color: const Color(0xFF03A9F4).withOpacity(0.15),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              )
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(widget.icon, color: const Color(0xFF03A9F4), size: 22),
+              const SizedBox(width: 8),
+              Text(
+                widget.label, 
+                style: const TextStyle(color: Color(0xFF03A9F4), fontSize: 18, fontWeight: FontWeight.bold)
+              ),
+            ],
+          ),
         ),
       ),
-      onPressed: () => _addWater(amount, currentWater),
-      child: Text(label, style: const TextStyle(color: Color(0xFF03A9F4), fontSize: 18, fontWeight: FontWeight.bold)),
     );
   }
 }
