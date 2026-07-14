@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Untuk efek gegaran (Haptic)
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
@@ -6,19 +7,17 @@ import 'package:intl/intl.dart';
 class ProgressScreen extends StatelessWidget {
   const ProgressScreen({super.key});
 
-  String _formatDateString(DateTime date) {
+  // --- FUNGSI FORMAT TARIKH ---
+  String _formatDateString(DateTime recordDate) {
     final now = DateTime.now();
+    // Buang komponen masa (jam/minit) untuk perbandingan tarikh yang tepat
     final today = DateTime(now.year, now.month, now.day);
     final yesterday = DateTime(now.year, now.month, now.day - 1);
-    final targetDate = DateTime(date.year, date.month, date.day);
+    final targetDate = DateTime(recordDate.year, recordDate.month, recordDate.day);
 
-    if (targetDate == today) {
-      return 'Today';
-    } else if (targetDate == yesterday) {
-      return 'Yesterday';
-    } else {
-      return DateFormat('dd MMM yyyy, EEEE').format(date);
-    }
+    if (targetDate == today) return 'Today';
+    if (targetDate == yesterday) return 'Yesterday';
+    return DateFormat('dd MMM yyyy, EEEE').format(recordDate);
   }
 
   @override
@@ -30,7 +29,7 @@ class ProgressScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Progress History', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text('Progress History', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 22, letterSpacing: 1.2)),
         centerTitle: true,
         automaticallyImplyLeading: false, 
       ),
@@ -42,148 +41,252 @@ class ProgressScreen extends StatelessWidget {
             .orderBy('date', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Color(0xFF00E5FF)));
-          
-          if (snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('No progress recorded yet.', style: TextStyle(color: Colors.grey)));
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Color(0xFF00E5FF)));
+          }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return _buildEmptyState();
           }
 
-          final docs = snapshot.data!.docs;
+          final now = DateTime.now();
+          final today = DateTime(now.year, now.month, now.day);
+
+          // --- 1. TAPIS (FILTER) DATA MASA DEPAN KELUAR ---
+          // Kita cuma ambil rekod Hari Ini dan Hari-hari Sebelumnya sahaja.
+          final pastAndPresentDocs = snapshot.data!.docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            DateTime date = data.containsKey('date') ? (data['date'] as Timestamp).toDate() : DateTime.now();
+            DateTime targetDate = DateTime(date.year, date.month, date.day);
+            
+            return !targetDate.isAfter(today); // False kalau tarikh tu masa depan
+          }).toList();
+
+          if (pastAndPresentDocs.isEmpty) {
+            return _buildEmptyState();
+          }
+
+          // --- 2. SUSUN DATA MENURUN (TERKINI DI ATAS) ---
+          pastAndPresentDocs.sort((a, b) {
+            final dataA = a.data() as Map<String, dynamic>;
+            final dataB = b.data() as Map<String, dynamic>;
+            DateTime dateA = dataA.containsKey('date') ? (dataA['date'] as Timestamp).toDate() : DateTime.now();
+            DateTime dateB = dataB.containsKey('date') ? (dataB['date'] as Timestamp).toDate() : DateTime.now();
+            return dateB.compareTo(dateA);
+          });
 
           return ListView.builder(
-            padding: const EdgeInsets.all(24.0),
-            itemCount: docs.length,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 15),
+            itemCount: pastAndPresentDocs.length,
             itemBuilder: (context, index) {
-              final data = docs[index].data() as Map<String, dynamic>;
+              final data = pastAndPresentDocs[index].data() as Map<String, dynamic>;
+              DateTime date = data.containsKey('date') ? (data['date'] as Timestamp).toDate() : DateTime.now();
               
-              DateTime recordDate = data.containsKey('date') 
-                  ? (data['date'] as Timestamp).toDate() 
-                  : DateTime.now();
-              String displayDate = _formatDateString(recordDate);
-
-              int waterIntake = data.containsKey('water_intake') ? data['water_intake'] : 0;
-              double waterProgress = waterIntake / 2500; 
-
-              List<dynamic> exercises = data.containsKey('exercises') ? data['exercises'] : [];
-              int completedWorkouts = exercises.where((e) => e['isCompleted'] == true).length;
-              int totalWorkouts = exercises.isEmpty ? 3 : exercises.length; 
-              double workoutProgress = totalWorkouts == 0 ? 0 : (completedWorkouts / totalWorkouts);
-
-              // Jarak larian
-              double runDistance = data.containsKey('run_distance') ? (data['run_distance'] as num).toDouble() : 0.0;
-              double targetRun = 5.0; 
-              double runProgress = targetRun == 0 ? 0 : (runDistance / targetRun);
-
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 30.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(displayDate, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 15),
-
-                    _buildProgressCard(
-                      icon: Icons.water_drop,
-                      iconColor: const Color(0xFF03A9F4),
-                      title: 'Water Intake',
-                      progressText: '$waterIntake / 2500 ml',
-                      progressValue: waterProgress,
-                      progressColor: const Color(0xFF03A9F4),
-                    ),
-                    const SizedBox(height: 15),
-
-                    _buildProgressCard(
-                      icon: Icons.fitness_center,
-                      iconColor: const Color(0xFF9D50BB),
-                      title: 'Workout Completed',
-                      progressText: '$completedWorkouts / $totalWorkouts',
-                      progressValue: workoutProgress,
-                      progressColor: const Color(0xFF9D50BB),
-                    ),
-                    const SizedBox(height: 15),
-
-                    _buildProgressCard(
-                      icon: Icons.directions_run,
-                      iconColor: const Color(0xFFFF9800),
-                      title: 'Outdoor Run',
-                      progressText: '${runDistance.toStringAsFixed(2)} / ${targetRun.toInt()} km',
-                      progressValue: runProgress,
-                      progressColor: const Color(0xFFFF9800),
-                    ),
-                  ],
-                ),
+              return _buildDailySection(
+                _formatDateString(date),
+                data['water_intake'] ?? 0,
+                data['exercises'] ?? [],
+                (data['run_distance'] as num?)?.toDouble() ?? 0.0,
+                isToday: _formatDateString(date) == 'Today'
               );
             },
           );
         },
       ),
-
-      // --- BUTTON DUMMY UNTUK TEST MASUKKAN DATA (BOLEH PADAM SELEPAS INI) ---
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF00E5FF),
-        child: const Icon(Icons.add, color: Colors.black),
-        onPressed: () async {
-          final now = DateTime.now();
-          
-          // 1. Masukkan Data Hari Ini (Today)
-          final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-          await FirebaseFirestore.instance.collection('users').doc(userId).collection('history').doc(todayStr).set({
-            'date': Timestamp.fromDate(now),
-            'water_intake': 1500,
-            'run_distance': 3.20,
-            'exercises': [{'isCompleted': true}, {'isCompleted': true}, {'isCompleted': false}]
-          });
-
-          // 2. Masukkan Data Semalam (Yesterday)
-          final yesterday = now.subtract(const Duration(days: 1));
-          final yesterdayStr = "${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}";
-          await FirebaseFirestore.instance.collection('users').doc(userId).collection('history').doc(yesterdayStr).set({
-            'date': Timestamp.fromDate(yesterday),
-            'water_intake': 2500,
-            'run_distance': 5.0,
-            'exercises': [{'isCompleted': true}, {'isCompleted': true}, {'isCompleted': true}]
-          });
-        },
-      ),
     );
   }
 
-  Widget _buildProgressCard({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String progressText,
-    required double progressValue,
-    required Color progressColor,
-  }) {
+  // WIDGET PAPARAN JIKA TIADA REKOD
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.directions_run, size: 80, color: Colors.grey.withOpacity(0.3)),
+          const SizedBox(height: 20),
+          const Text(
+            'No progress recorded yet.', 
+            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Start sweating and hit your goals! 💪', 
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey, height: 1.5)
+          ),
+        ],
+      )
+    );
+  }
+
+  // WIDGET KUMPULAN SEHARI (SATU TARIKH)
+  Widget _buildDailySection(String title, int water, List<dynamic> exercises, double run, {bool isToday = false}) {
+    int completed = exercises.where((e) => e['isCompleted'] == true).length;
+    int total = exercises.isEmpty ? 3 : exercises.length;
+
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: const Color(0xFF131A26), borderRadius: BorderRadius.circular(20)),
+      margin: const EdgeInsets.only(bottom: 35),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // Header Tarikh dengan Efek Glowing (Khas untuk 'Today')
+          Padding(
+            padding: const EdgeInsets.only(left: 5, bottom: 15),
+            child: Row(
+              children: [
+                Container(
+                  width: 10, 
+                  height: 10, 
+                  decoration: BoxDecoration(
+                    color: isToday ? const Color(0xFF00E5FF) : Colors.grey, 
+                    shape: BoxShape.circle,
+                    boxShadow: isToday ? [BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.6), blurRadius: 10)] : [],
+                  )
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  title.toUpperCase(), 
+                  style: TextStyle(
+                    color: isToday ? Colors.white : Colors.grey, 
+                    fontSize: 14, 
+                    fontWeight: FontWeight.w900, 
+                    letterSpacing: 1.5
+                  )
+                ),
+              ],
+            ),
+          ),
+          // Kad-kad Progres (Interaktif)
+          _BouncingProgressTile(
+            icon: Icons.water_drop, 
+            title: 'Water Intake', 
+            val: '$water / 2500 ml', 
+            progress: (water / 2500).clamp(0.0, 1.0), 
+            color: const Color(0xFF03A9F4)
+          ),
+          _BouncingProgressTile(
+            icon: Icons.fitness_center, 
+            title: 'Workouts', 
+            val: '$completed / $total', 
+            progress: total == 0 ? 0 : (completed / total).clamp(0.0, 1.0), 
+            color: const Color(0xFF9D50BB)
+          ),
+          _BouncingProgressTile(
+            icon: Icons.directions_run, 
+            title: 'Outdoor Run', 
+            val: '${run.toStringAsFixed(2)} / 5.0 km', 
+            progress: (run / 5).clamp(0.0, 1.0), 
+            color: const Color(0xFFFF9800)
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================================
+// KELAS KHAS: KAD PROGRES INTERAKTIF (MELANTUN)
+// ==========================================================
+class _BouncingProgressTile extends StatefulWidget {
+  final IconData icon;
+  final String title;
+  final String val;
+  final double progress;
+  final Color color;
+
+  const _BouncingProgressTile({
+    required this.icon, 
+    required this.title, 
+    required this.val, 
+    required this.progress, 
+    required this.color
+  });
+
+  @override
+  State<_BouncingProgressTile> createState() => _BouncingProgressTileState();
+}
+
+class _BouncingProgressTileState extends State<_BouncingProgressTile> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // Kalau dah 100%, bar akan penuh dan warna berubah sikit
+    bool isCompleted = widget.progress >= 1.0;
+
+    return GestureDetector(
+      onTapDown: (_) {
+        HapticFeedback.selectionClick();
+        setState(() => _isPressed = true);
+      },
+      onTapUp: (_) {
+        HapticFeedback.lightImpact();
+        setState(() => _isPressed = false);
+      },
+      onTapCancel: () => setState(() => _isPressed = false),
+      child: AnimatedScale(
+        scale: _isPressed ? 0.95 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOutCubic,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF131A26),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isCompleted ? widget.color.withOpacity(0.3) : Colors.white.withOpacity(0.03), 
+              width: 1.5
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2), 
+                blurRadius: 15, 
+                offset: const Offset(0, 5)
+              )
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Icon(icon, color: iconColor),
-                  const SizedBox(width: 10),
-                  Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500)),
+                  Container(
+                    padding: const EdgeInsets.all(10), 
+                    decoration: BoxDecoration(
+                      color: widget.color.withOpacity(0.1), 
+                      shape: BoxShape.circle
+                    ), 
+                    child: Icon(widget.icon, color: widget.color, size: 22)
+                  ),
+                  const SizedBox(width: 15),
+                  Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  Text(
+                    widget.val, 
+                    style: TextStyle(
+                      color: isCompleted ? widget.color : Colors.grey, 
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14
+                    )
+                  ),
                 ],
               ),
-              Text(progressText, style: const TextStyle(color: Colors.grey)),
+              const SizedBox(height: 18),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 500),
+                  height: 8,
+                  child: LinearProgressIndicator(
+                    value: widget.progress, 
+                    color: widget.color, 
+                    backgroundColor: const Color(0xFF090E17), 
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 15),
-          LinearProgressIndicator(
-            value: progressValue > 1.0 ? 1.0 : progressValue,
-            backgroundColor: const Color(0xFF090E17),
-            color: progressColor,
-            minHeight: 10,
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ],
+        ),
       ),
     );
   }

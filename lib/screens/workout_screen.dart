@@ -13,14 +13,25 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   final String userId = FirebaseAuth.instance.currentUser!.uid;
   int _selectedDayIndex = 0; 
 
-  // Senarai lalai (Default) jika pengguna baru pertama kali buka app
+  // --- DAPATKAN TARIKH BERDASARKAN HARI YANG DIPILIH PADA KALENDAR ---
+  String get _selectedDateStr {
+    final now = DateTime.now();
+    // Tambah hari berdasarkan index kalendar (0 = Hari ini, 1 = Esok, dll)
+    final targetDate = now.add(Duration(days: _selectedDayIndex));
+    return "${targetDate.year}-${targetDate.month.toString().padLeft(2, '0')}-${targetDate.day.toString().padLeft(2, '0')}";
+  }
+
+  DateTime get _selectedDateTime {
+    return DateTime.now().add(Duration(days: _selectedDayIndex));
+  }
+
+  // Senarai lalai (Default) jika pengguna buka hari baru
   final List<Map<String, dynamic>> defaultExercises = [
     {'title': 'Push-ups', 'detail1': '3 sets', 'detail2': '15 reps', 'icon': 'fitness_center', 'isCompleted': false},
     {'title': 'Squats', 'detail1': '3 sets', 'detail2': '20 reps', 'icon': 'accessibility_new', 'isCompleted': false},
     {'title': 'Plank', 'detail1': '3 sets', 'detail2': '60 sec', 'icon': 'self_improvement', 'isCompleted': false},
   ];
 
-  // Tukar string kepada Icon sebenar
   IconData _getIconData(String iconName) {
     switch (iconName) {
       case 'accessibility_new': return Icons.accessibility_new;
@@ -29,34 +40,22 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     }
   }
 
-  // --- FUNGSI UPDATE KE FIRESTORE ---
+  // --- FUNGSI UPDATE KE FIRESTORE MENGIKUT TARIKH DIPILIH ---
   Future<void> _toggleExercise(int index, List<dynamic> currentList) async {
-    // 1. Buat salinan (deep copy) supaya state betul-betul dikemaskini
+    // Buat salinan (deep copy) supaya state betul-betul dikemaskini
     List<dynamic> updatedList = List.from(currentList);
     updatedList[index] = Map<String, dynamic>.from(updatedList[index]);
     updatedList[index]['isCompleted'] = !updatedList[index]['isCompleted'];
     
-    // Dapatkan tarikh hari ini
-    final now = DateTime.now();
-    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-
-    // 2. Simpan ke dalam subcollection history
+    // Simpan ke dalam subcollection history mengikut TARIKH YANG DIPILIH
     await FirebaseFirestore.instance
         .collection('users')
         .doc(userId)
         .collection('history') 
-        .doc(todayStr)         
+        .doc(_selectedDateStr)         
         .set({
-      'date': Timestamp.fromDate(now), 
+      'date': Timestamp.fromDate(_selectedDateTime), // Supaya Progress Screen susun betul
       'exercises': updatedList, 
-    }, SetOptions(merge: true));
-
-    // 3. [FIX] Update juga document utama supaya StreamBuilder refresh UI
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .set({
-      'exercises': updatedList,
     }, SetOptions(merge: true));
   }
 
@@ -229,13 +228,11 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
                   SizedBox(
                     width: double.infinity,
-                    height: 55,
+                    height: 50,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF00E5FF),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                        elevation: 10,
-                        shadowColor: const Color(0xFF00E5FF).withValues(alpha: 0.5),
                       ),
                       onPressed: () {
                         Navigator.pop(context); 
@@ -358,7 +355,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                   onPressed: () async {
                     if (nameCtrl.text.isNotEmpty && setsCtrl.text.isNotEmpty && repsCtrl.text.isNotEmpty) {
                       
-                      // [FIX] Buat salinan list untuk elak ralat memory reference
                       List<dynamic> updatedList = List.from(currentList);
                       
                       updatedList.add({
@@ -369,8 +365,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                         'isCompleted': false,
                       });
                       
-                      // Simpan senarai baru ke Firebase
-                      await FirebaseFirestore.instance.collection('users').doc(userId).set({
+                      // Simpan ke tarikh yang dipilih
+                      await FirebaseFirestore.instance.collection('users').doc(userId).collection('history').doc(_selectedDateStr).set({
+                        'date': Timestamp.fromDate(_selectedDateTime),
                         'exercises': updatedList,
                       }, SetOptions(merge: true));
 
@@ -406,15 +403,17 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
           ),
         ],
       ),
-      // --- BALUT SELURUH BODY DENGAN STREAM BUILDER FIRESTORE ---
+      // --- TARIK DATA BERDASARKAN TARIKH YANG DIPILIH (_selectedDateStr) ---
       body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
+        stream: FirebaseFirestore.instance.collection('users').doc(userId).collection('history').doc(_selectedDateStr).snapshots(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Color(0xFF9D50BB)));
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Color(0xFF9D50BB)));
+          }
 
-          final data = snapshot.data!.data() as Map<String, dynamic>?;
+          final data = snapshot.data?.data() as Map<String, dynamic>?;
           
-          // Ambil senarai senaman dari database, kalau kosong guna default
+          // Jika data tak wujud untuk hari tersebut, guna senarai default (yang belum tick)
           List<dynamic> exercises = (data != null && data.containsKey('exercises') && data['exercises'] != null) 
               ? data['exercises'] 
               : defaultExercises;
@@ -442,7 +441,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text("Today's Workout", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                      Text(
+                        _selectedDayIndex == 0 ? "Today's Workout" : "Workout Plan", 
+                        style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)
+                      ),
                       Text("${exercises.length} Exercises", style: const TextStyle(color: Color(0xFF9D50BB), fontSize: 14)),
                     ],
                   ),

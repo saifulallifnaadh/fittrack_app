@@ -125,7 +125,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Input E-mel
                 TextField(
                   controller: emailCtrl,
                   style: const TextStyle(color: Colors.white),
@@ -139,7 +138,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 15),
-                // Input Nombor Telefon
                 TextField(
                   controller: phoneCtrl,
                   keyboardType: TextInputType.phone,
@@ -169,7 +167,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   setStateDialog(() => isVerifying = true);
                   
                   try {
-                    // Semak dengan Firestore Data
                     DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(widget.userId).get();
                     
                     if (userDoc.exists) {
@@ -177,14 +174,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       String savedEmail = data['email']?.toString().trim() ?? '';
                       String savedPhone = data['phone']?.toString().trim() ?? '';
 
-                      // Jika padan, tutup popup verify dan buka popup tukar password
                       if (emailCtrl.text.trim() == savedEmail && phoneCtrl.text.trim() == savedPhone) {
                         if (mounted) {
-                          Navigator.pop(context); // Tutup dialog ini
-                          _showChangePasswordDialog(); // Panggil fungsi tukar password
+                          Navigator.pop(context); 
+                          _showChangePasswordDialog(); 
                         }
                       } else {
-                        // Jika tak padan
                         setStateDialog(() => isVerifying = false);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t('verify_fail')), backgroundColor: Colors.redAccent));
@@ -298,7 +293,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF131A26),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: const Color(0xFF00E5FF).withValues(alpha: 0.5))),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: const Color(0xFF00E5FF).withOpacity(0.5))),
         title: Row(
           children: [
             const Icon(Icons.support_agent, color: Color(0xFF00E5FF), size: 28),
@@ -320,7 +315,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // --- POPUP PILIH SUBSCRIPTION (DITAMBAH BAIK) ---
+  // --- POPUP PILIH SUBSCRIPTION ---
   void _showSubscriptionDialog() {
     showDialog(
       context: context,
@@ -334,7 +329,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               const Icon(Icons.workspace_premium, color: Colors.amber, size: 60),
               const SizedBox(height: 15),
-              // Senarai kelebihan Premium
               Text(t('premium_benefits'), style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 15),
               _buildBenefitItem(t('feat_1')),
@@ -342,7 +336,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildBenefitItem(t('feat_3')),
               _buildBenefitItem(t('feat_4')),
               const SizedBox(height: 25),
-              // Pilihan Pelan
               _buildPlanOption(t('monthly'), 'Monthly Premium'),
               const SizedBox(height: 10),
               _buildPlanOption(t('yearly'), 'Yearly Premium'),
@@ -372,15 +365,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildPlanOption(String title, String planCode) {
     return InkWell(
       onTap: () {
-        Navigator.pop(context); // Tutup popup pelan
-        _showPaymentDialog(title, planCode); // Buka popup maklumat bank
+        Navigator.pop(context); 
+        _showPaymentDialog(title, planCode); 
       },
       borderRadius: BorderRadius.circular(15),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 15),
         decoration: BoxDecoration(
-          color: Colors.amber.withValues(alpha: 0.1),
+          color: Colors.amber.withOpacity(0.1),
           borderRadius: BorderRadius.circular(15),
           border: Border.all(color: Colors.amber),
         ),
@@ -414,7 +407,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   decoration: BoxDecoration(
                     color: const Color(0xFF090E17),
                     borderRadius: BorderRadius.circular(15),
-                    border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
+                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -448,7 +441,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPressed: isProcessing ? null : () async {
                   setStateDialog(() => isProcessing = true);
                   
-                  // Simulasi sistem tengah verify payment (Loading 2 saat)
                   await Future.delayed(const Duration(seconds: 2));
                   
                   if (mounted) {
@@ -456,7 +448,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       _isPremium = true;
                       _planType = planCode;
                     });
-                    Navigator.pop(context); // Tutup dialog bayaran
+                    Navigator.pop(context); 
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text(_currentLanguage == 'English' ? 'Payment Verified! Welcome to Premium.' : 'Bayaran Disahkan! Selamat Datang ke Premium.'), backgroundColor: Colors.green),
                     );
@@ -505,6 +497,120 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  // ==========================================================
+  // WIDGET BANTUAN UI BARU (STANDARD INDUSTRI)
+  // ==========================================================
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, bottom: 8, top: 24),
+      child: Text(
+        title.toUpperCase(), 
+        style: const TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 1.2)
+      ),
+    );
+  }
+
+  // Wrapper untuk himpunkan senarai menjadi satu kad bersatu
+  Widget _buildSectionGroup({required List<Widget> children}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF131A26),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Column(children: children),
+      ),
+    );
+  }
+
+  Widget _buildListTile({
+    required String title, 
+    required IconData icon, 
+    required VoidCallback onTap, 
+    required Color iconBgColor,
+    String? trailingText,
+    bool showDivider = true,
+  }) {
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: iconBgColor, borderRadius: BorderRadius.circular(10)),
+                    child: Icon(icon, color: Colors.white, size: 20),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500)),
+                  ),
+                  if (trailingText != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: Text(trailingText, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                    ),
+                  const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (showDivider)
+          const Divider(height: 1, thickness: 1, color: Color(0xFF090E17), indent: 60),
+      ],
+    );
+  }
+
+  Widget _buildSwitchTile({
+    required String title, 
+    required IconData icon, 
+    required Color iconBgColor,
+    required bool value, 
+    required ValueChanged<bool> onChanged,
+    bool showDivider = true,
+  }) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: iconBgColor, borderRadius: BorderRadius.circular(10)),
+                child: Icon(icon, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500)),
+              ),
+              Switch(
+                value: value,
+                onChanged: onChanged,
+                activeColor: const Color(0xFF00E5FF),
+                inactiveTrackColor: Colors.grey.withOpacity(0.3),
+              ),
+            ],
+          ),
+        ),
+        if (showDivider)
+          const Divider(height: 1, thickness: 1, color: Color(0xFF090E17), indent: 60),
+      ],
+    );
+  }
+
+  // ==========================================================
+  // MAIN BUILD METHOD
+  // ==========================================================
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -518,98 +624,145 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 10.0),
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              
               // --- BAHAGIAN AKAUN ---
               _buildSectionHeader(t('account')),
-              _buildListTile(t('edit_profile'), Icons.person_outline, () {
-                Navigator.push(context, MaterialPageRoute(builder: (context) => ProfileScreen(userId: widget.userId)));
-              }),
-              _buildListTile(t('change_pw'), Icons.lock_outline, _showVerificationDialog),
-              
-              const SizedBox(height: 25),
+              _buildSectionGroup(
+                children: [
+                  _buildListTile(
+                    title: t('edit_profile'), 
+                    icon: Icons.person, 
+                    iconBgColor: const Color(0xFF00E5FF), // Biru Cyan
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => ProfileScreen(userId: widget.userId)));
+                    }
+                  ),
+                  _buildListTile(
+                    title: t('change_pw'), 
+                    icon: Icons.lock, 
+                    iconBgColor: const Color(0xFFFF9800), // Oren
+                    showDivider: false,
+                    onTap: _showVerificationDialog,
+                  ),
+                ],
+              ),
 
               // --- BAHAGIAN SUBSCRIPTION (LANGGANAN) ---
               _buildSectionHeader(t('subs')),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF131A26),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: _isPremium ? Colors.amber : Colors.grey.withValues(alpha: 0.2)),
-                  boxShadow: _isPremium ? [BoxShadow(color: Colors.amber.withValues(alpha: 0.1), blurRadius: 20, spreadRadius: 1)] : [],
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF1A1A24), Color(0xFF2D2310)], // Elegan Dark-to-Gold
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: _isPremium ? Colors.amber.withOpacity(0.8) : Colors.grey.withOpacity(0.1)),
+                  boxShadow: _isPremium ? [BoxShadow(color: Colors.amber.withOpacity(0.15), blurRadius: 25, spreadRadius: 1)] : [],
                 ),
                 child: Column(
                   children: [
                     Icon(
                       _isPremium ? Icons.workspace_premium : Icons.card_membership, 
                       color: _isPremium ? Colors.amber : Colors.grey, 
-                      size: 45
+                      size: 50
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     Text(
                       _isPremium ? _planType : t('free_plan'),
-                      style: TextStyle(color: _isPremium ? Colors.amber : Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                      style: TextStyle(color: _isPremium ? Colors.amber : Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
                     ),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 20),
                     if (!_isPremium)
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.amber,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.amber,
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            elevation: 0,
+                          ),
+                          onPressed: _showSubscriptionDialog,
+                          child: Text(t('upgrade'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                         ),
-                        onPressed: _showSubscriptionDialog,
-                        child: Text(t('upgrade'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       )
                     else
                       Text(
                         _currentLanguage == 'English' ? 'You have access to all premium features.' : 'Anda mempunyai akses ke semua ciri premium.', 
-                        style: const TextStyle(color: Colors.grey, fontSize: 13),
+                        style: const TextStyle(color: Colors.grey, fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 25),
-
               // --- BAHAGIAN PREFERENSI (TETAPAN) ---
               _buildSectionHeader(t('pref')),
-              _buildSwitchTile(t('notif'), Icons.notifications_active_outlined, _notificationsEnabled, (val) => setState(() => _notificationsEnabled = val)),
-              _buildListTile(t('language'), Icons.language_outlined, _showLanguageDialog, trailingText: _currentLanguage),
-
-              const SizedBox(height: 25),
+              _buildSectionGroup(
+                children: [
+                  _buildSwitchTile(
+                    title: t('notif'), 
+                    icon: Icons.notifications_active, 
+                    iconBgColor: const Color(0xFFE91E63), // Pink
+                    value: _notificationsEnabled, 
+                    onChanged: (val) => setState(() => _notificationsEnabled = val)
+                  ),
+                  _buildListTile(
+                    title: t('language'), 
+                    icon: Icons.language, 
+                    iconBgColor: const Color(0xFF4CAF50), // Hijau
+                    trailingText: _currentLanguage,
+                    showDivider: false,
+                    onTap: _showLanguageDialog,
+                  ),
+                ],
+              ),
 
               // --- BAHAGIAN LAIN-LAIN ---
               _buildSectionHeader(t('more')),
-              _buildListTile(t('privacy'), Icons.privacy_tip_outlined, _showPrivacyPolicyDialog),
-              _buildListTile(t('help'), Icons.help_outline, _showHelpSupportDialog),
+              _buildSectionGroup(
+                children: [
+                  _buildListTile(
+                    title: t('privacy'), 
+                    icon: Icons.privacy_tip, 
+                    iconBgColor: const Color(0xFF607D8B), // Kelabu
+                    onTap: _showPrivacyPolicyDialog
+                  ),
+                  _buildListTile(
+                    title: t('help'), 
+                    icon: Icons.help, 
+                    iconBgColor: const Color(0xFF9C27B0), // Ungu
+                    showDivider: false,
+                    onTap: _showHelpSupportDialog
+                  ),
+                ],
+              ),
 
-              const SizedBox(height: 25),
-
-              // --- BAHAGIAN ABOUT (KREDIT) ---
+              // --- BAHAGIAN ABOUT ---
               _buildSectionHeader(t('about')),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   color: const Color(0xFF131A26),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.3)),
+                  borderRadius: BorderRadius.circular(24),
                 ),
                 child: Column(
                   children: [
                     Image.asset('assets/logo.png', height: 60, errorBuilder: (context, error, stackTrace) => const Icon(Icons.fitness_center, color: Color(0xFF00E5FF), size: 50)),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 16),
                     const Text('FitTrack v1.0.0', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     const Text(
-                      'This app was developed by Saiful Allif, a Diploma in Computer Science (CDCS110) student at UiTM Tapah.',
+                      'Developed by Saiful Allif\nDiploma in Computer Science (CDCS110)\nUniversiti Teknologi MARA (UiTM).',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey, fontSize: 13, height: 1.5),
                     ),
@@ -617,11 +770,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
 
-              const SizedBox(height: 40),
+              const SizedBox(height: 35),
 
               // --- BUTANG LOG OUT ---
-              Center(
-                child: TextButton.icon(
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent.withOpacity(0.1),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: Colors.redAccent.withOpacity(0.5))),
+                    elevation: 0,
+                  ),
                   onPressed: () async {
                     await FirebaseAuth.instance.signOut();
                     if (context.mounted) {
@@ -632,55 +792,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   label: Text(t('logout'), style: const TextStyle(color: Colors.redAccent, fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 40),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  // --- WIDGET BANTUAN UI ---
-  Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0, left: 5),
-      child: Text(title, style: const TextStyle(color: Color(0xFF00E5FF), fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-    );
-  }
-
-  Widget _buildListTile(String title, IconData icon, VoidCallback onTap, {String? trailingText}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(color: const Color(0xFF131A26), borderRadius: BorderRadius.circular(16)),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: const Color(0xFF090E17), borderRadius: BorderRadius.circular(10)),
-          child: Icon(icon, color: Colors.white, size: 20),
-        ),
-        title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 15)),
-        trailing: trailingText != null 
-            ? Row(mainAxisSize: MainAxisSize.min, children: [Text(trailingText, style: const TextStyle(color: Colors.grey, fontSize: 13)), const SizedBox(width: 8), const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 14)])
-            : const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 14),
-        onTap: onTap,
-      ),
-    );
-  }
-
-  Widget _buildSwitchTile(String title, IconData icon, bool value, ValueChanged<bool> onChanged) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(color: const Color(0xFF131A26), borderRadius: BorderRadius.circular(16)),
-      child: SwitchListTile(
-        secondary: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: const Color(0xFF090E17), borderRadius: BorderRadius.circular(10)),
-          child: Icon(icon, color: Colors.white, size: 20),
-        ),
-        title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 15)),
-        value: value,
-        activeThumbColor: const Color(0xFF00E5FF),
-        onChanged: onChanged,
       ),
     );
   }

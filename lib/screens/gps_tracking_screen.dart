@@ -1,10 +1,11 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';  
+import 'package:firebase_auth/firebase_auth.dart';
 
 class GpsTrackingScreen extends StatefulWidget {
   const GpsTrackingScreen({super.key});
@@ -13,18 +14,23 @@ class GpsTrackingScreen extends StatefulWidget {
   State<GpsTrackingScreen> createState() => _GpsTrackingScreenState();
 }
 
-// Tambah TickerProviderStateMixin untuk membolehkan Animasi Peta & Marker berfungsi
 class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProviderStateMixin {
   // --- STATE VARIABLES ---
   bool _isRunning = false;
+  bool _isPaused = false; 
   int _seconds = 0;
   Timer? _timer;
-  // --- TAMBAH BARIS INI UNTUK ANIMASI BUTANG ---
-  bool _isStartPressed = false;
+
+  // Variabel untuk Countdown 3 saat
+  bool _isCountingDown = false;
+  int _countdownValue = 3;
+
+  // Variabel Tema Peta (Dark / Light Mode)
+  bool _isDarkModeMap = true; 
 
   // Variabel GPS & Peta
   final MapController _mapController = MapController();
-  LatLng _currentPosition = const LatLng(4.1950, 101.2600); // Default ke Tapah
+  LatLng _currentPosition = const LatLng(4.1950, 101.2600); 
   bool _hasLocation = false;
   
   // Jejak laluan dan jarak
@@ -34,28 +40,18 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
   int _totalCalories = 0;
   String _currentPace = "0'00\"";
 
-  // Animasi Marker Berdegup (Pulsing)
+  // Animasi Marker Berdegup
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
-    
-    // Setup Animasi Marker Berdegup
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: false);
-    
-    _pulseAnimation = Tween<double>(begin: 0.5, end: 1.5).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeOut),
-    );
-
+    _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: false);
+    _pulseAnimation = Tween<double>(begin: 0.5, end: 1.5).animate(CurvedAnimation(parent: _pulseController, curve: Curves.easeOut));
     _initLocation();
   }
 
-  // --- 1. MINTA KEBENARAN & DAPATKAN LOKASI AWAL ---
   Future<void> _initLocation() async {
     bool serviceEnabled;
     LocationPermission permission;
@@ -74,16 +70,11 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
     if (permission == LocationPermission.deniedForever) return;
 
     try {
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 8), 
-      );
-      
+      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high, timeLimit: const Duration(seconds: 8));
       setState(() {
         _currentPosition = LatLng(position.latitude, position.longitude);
         _hasLocation = true;
       });
-
       _animatedMapMove(_currentPosition, 16.5);
     } catch (e) {
       Position? lastPosition = await Geolocator.getLastKnownPosition();
@@ -97,11 +88,8 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
     }
   }
 
-  // --- FUNGSI ANIMASI PERGERAKAN PETA (SMOOTH PANNING) ---
   void _animatedMapMove(LatLng destLocation, double destZoom) {
-    // Kalau tak ada lokasi, jangan gerak
     if (!_hasLocation) return;
-    
     final latTween = Tween<double>(begin: _mapController.camera.center.latitude, end: destLocation.latitude);
     final lngTween = Tween<double>(begin: _mapController.camera.center.longitude, end: destLocation.longitude);
     final zoomTween = Tween<double>(begin: _mapController.camera.zoom, end: destZoom);
@@ -110,23 +98,44 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
     Animation<double> animation = CurvedAnimation(parent: animationController, curve: Curves.fastOutSlowIn);
 
     animationController.addListener(() {
-      _mapController.move(
-        LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)),
-        zoomTween.evaluate(animation),
-      );
+      _mapController.move(LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)), zoomTween.evaluate(animation));
     });
 
     animation.addStatusListener((status) {
-      if (status == AnimationStatus.completed || status == AnimationStatus.dismissed) {
-        animationController.dispose();
-      }
+      if (status == AnimationStatus.completed || status == AnimationStatus.dismissed) animationController.dispose();
     });
     animationController.forward();
   }
 
-  // --- 2. FUNGSI START TRACKING (LIVE GPS) ---
+  // --- FUNGSI COUNTDOWN (3.. 2.. 1.. GO!) ---
+  void _startCountdown() {
+    if (!_hasLocation) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sila tunggu isyarat GPS stabil...')));
+      return;
+    }
+
+    setState(() {
+      _isCountingDown = true;
+      _countdownValue = 3;
+    });
+
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_countdownValue == 1) {
+        timer.cancel();
+        setState(() => _isCountingDown = false);
+        _startWorkout(); 
+      } else {
+        setState(() => _countdownValue--);
+      }
+    });
+  }
+
+  // --- FUNGSI LARIAN ---
   void _startWorkout() {
-    setState(() => _isRunning = true);
+    setState(() {
+      _isRunning = true;
+      _isPaused = false;
+    });
 
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
@@ -135,101 +144,206 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
       });
     });
 
-    const locationSettings = LocationSettings(accuracy: LocationAccuracy.best, distanceFilter: 2);
-    
-    _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings).listen(
-      (Position position) {
-        if (_isRunning) {
-          LatLng newPos = LatLng(position.latitude, position.longitude);
+    if (_positionStream == null) {
+      const locationSettings = LocationSettings(accuracy: LocationAccuracy.best, distanceFilter: 2);
+      _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) {
+        LatLng newPos = LatLng(position.latitude, position.longitude);
 
+        if (_isRunning && !_isPaused) {
           setState(() {
             if (_routePoints.isNotEmpty) {
               const Distance distance = Distance();
               final double meters = distance.as(LengthUnit.Meter, _routePoints.last, newPos);
               _totalDistanceKm += (meters / 1000.0);
             }
-            
             _routePoints.add(newPos);
             _currentPosition = newPos;
           });
-
-          // Kamera sentiasa ikut pelari dengan smooth
           _animatedMapMove(_currentPosition, 17.0);
+        } else {
+          setState(() => _currentPosition = newPos);
         }
-      }
-    );
+      });
+    }
   }
 
   void _pauseWorkout() {
-    setState(() => _isRunning = false);
+    setState(() => _isPaused = true);
     _timer?.cancel();
-    _positionStream?.cancel();
+  }
+
+  void _resumeWorkout() {
+    _startWorkout();
   }
 
   void _calculateStats() {
     _totalCalories = (_totalDistanceKm * 60).toInt();
 
-    if (_totalDistanceKm > 0.05) { 
+    if (_totalDistanceKm > 0.01) { 
       double minutes = _seconds / 60.0;
       double paceDecimal = minutes / _totalDistanceKm;
       
       int paceMinutes = paceDecimal.toInt();
       int paceSeconds = ((paceDecimal - paceMinutes) * 60).toInt();
-      
       _currentPace = "$paceMinutes'${paceSeconds.toString().padLeft(2, '0')}\"";
     }
   }
 
+  // ==========================================================
+  // POPUP WORKOUT FINISHED (REKAAN PREMIUM BARU)
+  // ==========================================================
   void _stopWorkout() {
     _pauseWorkout();
+    int estimatedSteps = (_totalDistanceKm * 1312).toInt();
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF131A26),
-        title: const Text('Workout Finished!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: Text('You ran ${_totalDistanceKm.toStringAsFixed(2)} km in ${_formatTime(_seconds)}.\n\nSave this session?', style: const TextStyle(color: Colors.grey, height: 1.5)),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); 
-              setState(() {
-                _seconds = 0;
-                _totalDistanceKm = 0;
-                _routePoints.clear();
-              }); 
-            },
-            child: const Text('Discard', style: TextStyle(color: Colors.redAccent)),
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: const Color(0xFF131A26),
+            borderRadius: BorderRadius.circular(30), // Bucu lebih membulat
+            border: Border.all(color: Colors.white.withOpacity(0.05)),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 40, spreadRadius: 5)
+            ],
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
-            onPressed: () async {
-              final String? userId = FirebaseAuth.instance.currentUser?.uid;
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // --- HEADER PIALA EMAS ---
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFFD700), Color(0xFFFF9800)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(color: Colors.amber.withOpacity(0.3), blurRadius: 20, spreadRadius: 2)
+                  ],
+                ),
+                child: const Icon(Icons.emoji_events, color: Colors.white, size: 45),
+              ),
+              const SizedBox(height: 20),
+              
+              const Text('Workout Finished!', style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              const Text('Great job! Here is your session summary.', style: TextStyle(color: Colors.grey, fontSize: 13), textAlign: TextAlign.center),
+              const SizedBox(height: 25),
 
-              if (userId != null) {
-                // 1. Dapatkan tarikh hari ini sebagai ID dokumen (cth: 2026-07-09)
-                final now = DateTime.now();
-                final String todayDateStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+              // --- GRID STATISTIK KAD PREMIUM ---
+              Row(
+                children: [
+                  Expanded(child: _buildPremiumStatCard(Icons.route, 'Distance', '${_totalDistanceKm.toStringAsFixed(2)} km', const Color(0xFF00E5FF))),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildPremiumStatCard(Icons.timer, 'Time', _formatTime(_seconds), Colors.white)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: _buildPremiumStatCard(Icons.speed, 'Avg Pace', _currentPace, Colors.amber)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildPremiumStatCard(Icons.local_fire_department, 'Calories', '$_totalCalories kcal', Colors.deepOrangeAccent)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Kad Panjang untuk Steps
+              _buildPremiumStatCard(Icons.directions_walk, 'Estimated Steps', '$estimatedSteps steps', Colors.greenAccent, isWide: true),
 
-                // 2. Simpan data ke dalam subcollection 'history' mengikut tarikh hari ini
-                await FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(userId)
-                    .collection('history')
-                    .doc(todayDateStr) // Dokumen dinamakan ikut tarikh supaya tak bertimbun
-                    .set({
-                  'date': Timestamp.fromDate(now), // Wajib ada untuk susunan (orderBy) dekat Progress Screen
-                  'run_distance': FieldValue.increment(_totalDistanceKm),
-                  'calories_burned': FieldValue.increment(_totalCalories),
-                }, SetOptions(merge: true)); // Merge supaya tak padam data air/workout yang dah ada pada hari yang sama
-              }
+              const SizedBox(height: 30),
 
-              if (mounted) {
-                Navigator.pop(context); 
-                Navigator.pop(context); 
-              }
-            },
-            child: const Text('Save Workout', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              // --- BUTANG KAWALAN ---
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16), 
+                        side: BorderSide(color: Colors.redAccent.withOpacity(0.5)), 
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                      ),
+                      onPressed: () {
+                        Navigator.pop(context); 
+                        setState(() {
+                          _seconds = 0; _totalDistanceKm = 0; _totalCalories = 0; _currentPace = "0'00\""; _routePoints.clear(); _isRunning = false; _isPaused = false;
+                        }); 
+                      },
+                      child: const Text('Discard', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 16)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 1,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00E5FF), 
+                        padding: const EdgeInsets.symmetric(vertical: 16), 
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), 
+                        elevation: 5, 
+                        shadowColor: const Color(0xFF00E5FF).withOpacity(0.4)
+                      ),
+                      onPressed: () async {
+                        final String? userId = FirebaseAuth.instance.currentUser?.uid;
+                        if (userId != null) {
+                          final now = DateTime.now();
+                          final String todayDateStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+                          List<GeoPoint> savedRoute = _routePoints.map((point) => GeoPoint(point.latitude, point.longitude)).toList();
+
+                          await FirebaseFirestore.instance.collection('users').doc(userId).collection('history').doc(todayDateStr).set({
+                            'date': Timestamp.fromDate(now), 
+                            'run_distance': FieldValue.increment(_totalDistanceKm),
+                            'calories_burned': FieldValue.increment(_totalCalories),
+                            'steps': FieldValue.increment(estimatedSteps),
+                          }, SetOptions(merge: true)); 
+
+                          final String sessionId = now.millisecondsSinceEpoch.toString();
+                          await FirebaseFirestore.instance.collection('users').doc(userId).collection('run_sessions').doc(sessionId).set({
+                            'date': Timestamp.fromDate(now), 'distance': _totalDistanceKm, 'calories': _totalCalories, 'steps': estimatedSteps, 'duration_seconds': _seconds, 'pace': _currentPace, 'route_points': savedRoute,
+                          });
+                        }
+                        if (mounted) {
+                          Navigator.pop(context); Navigator.pop(context); 
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Run Saved! Awesome work! 🏃‍♂️'), backgroundColor: Colors.green, behavior: SnackBarBehavior.floating));
+                        }
+                      },
+                      child: const Text('Save Run', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // WIDGET KAD GRID UNTUK POPUP
+  Widget _buildPremiumStatCard(IconData icon, String label, String value, Color iconColor, {bool isWide = false}) {
+    return Container(
+      width: isWide ? double.infinity : null,
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1D2633),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.03)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: iconColor, size: 24),
+          const SizedBox(height: 12),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11, letterSpacing: 0.5)),
         ],
       ),
     );
@@ -247,9 +361,7 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
     int hours = totalSeconds ~/ 3600;
     int minutes = (totalSeconds % 3600) ~/ 60;
     int seconds = totalSeconds % 60;
-    if (hours > 0) {
-      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-    }
+    if (hours > 0) return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
@@ -257,283 +369,219 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF090E17),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text('Outdoor Run', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        centerTitle: true,
-      ),
-      body: Column(
+      body: Stack(
         children: [
-          // --- PETA OPENSTREETMAP DENGAN UI OVERLAYS ---
-          Expanded(
-            flex: 4,
-            child: Container(
-              width: double.infinity,
-              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.3)),
-                boxShadow: [
-                  BoxShadow(color: const Color(0xFF00E5FF).withValues(alpha: 0.05), blurRadius: 20, spreadRadius: 5),
-                ],
+          // --- LAYER 1: PETA FULL SCREEN ---
+          Positioned(
+            top: -250, 
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: _currentPosition,
+                initialZoom: 16.0,
+                interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(30),
-                child: Stack(
-                  children: [
-                    FlutterMap(
-                      mapController: _mapController,
-                      options: MapOptions(
-                        initialCenter: _currentPosition,
-                        initialZoom: 16.0,
-                        interactionOptions: const InteractionOptions(
-                          flags: InteractiveFlag.all & ~InteractiveFlag.rotate, // Kunci rotation supaya tak pening
+              children: [
+                TileLayer(
+                  urlTemplate: _isDarkModeMap
+                      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+                      : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+                  subdomains: const ['a', 'b', 'c', 'd'],
+                  userAgentPackageName: 'com.fittrack.app',
+                ),
+                if (_routePoints.isNotEmpty)
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: _routePoints, 
+                        color: _isDarkModeMap ? const Color(0xFF00E5FF) : const Color(0xFF9D50BB), 
+                        strokeWidth: 6.0, 
+                        borderStrokeWidth: 2.0, 
+                        borderColor: Colors.black.withOpacity(0.3)
+                      ),
+                    ],
+                  ),
+                if (_hasLocation)
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: _currentPosition,
+                        width: 60, height: 60,
+                        child: AnimatedBuilder(
+                          animation: _pulseAnimation,
+                          builder: (context, child) {
+                            Color markerColor = _isDarkModeMap ? const Color(0xFF00E5FF) : const Color(0xFF9D50BB);
+                            return Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Container(
+                                  width: 30 * _pulseAnimation.value, height: 30 * _pulseAnimation.value,
+                                  decoration: BoxDecoration(shape: BoxShape.circle, color: markerColor.withOpacity(1.0 - (_pulseAnimation.value - 0.5))),
+                                ),
+                                Container(
+                                  width: 18, height: 18,
+                                  decoration: BoxDecoration(color: markerColor, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 5)]),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ),
-                      children: [
-                        TileLayer(
-                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          userAgentPackageName: 'com.fittrack.app',
+                    ],
+                  ),
+              ],
+            ),
+          ),
+
+          // --- LAYER 2: OVERLAY UI BAWAHAN & ATASAN ---
+          SafeArea(
+            child: Column(
+              children: [
+                // Header (Back Button & GPS Status)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildMapCircleButton(Icons.arrow_back_ios_new, const Color(0xFF131A26).withOpacity(0.9), () => Navigator.pop(context), iconColor: Colors.white),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(color: const Color(0xFF131A26).withOpacity(0.85), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.1))),
+                        child: Row(
+                          children: [
+                            Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: _hasLocation ? Colors.greenAccent : Colors.orangeAccent)),
+                            const SizedBox(width: 8),
+                            Text(_hasLocation ? 'GPS Ready' : 'Acquiring...', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                          ],
                         ),
-                        if (_routePoints.isNotEmpty)
-                          PolylineLayer(
-                            polylines: [
-                              Polyline(
-                                points: _routePoints,
-                                color: const Color(0xFF00E5FF),
-                                strokeWidth: 5.0,
-                                
-                              ),
-                            ],
-                          ),
-                        if (_hasLocation)
-                          MarkerLayer(
-                            markers: [
-                              Marker(
-                                point: _currentPosition,
-                                width: 60,
-                                height: 60,
-                                child: AnimatedBuilder(
-                                  animation: _pulseAnimation,
-                                  builder: (context, child) {
-                                    return Stack(
-                                      alignment: Alignment.center,
-                                      children: [
-                                        // Efek Radar (Pulsing)
-                                        Container(
-                                          width: 30 * _pulseAnimation.value,
-                                          height: 30 * _pulseAnimation.value,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: const Color(0xFF00E5FF).withValues(alpha: 1.0 - (_pulseAnimation.value - 0.5)),
-                                          ),
-                                        ),
-                                        // Dot Tengah Solid
-                                        Container(
-                                          width: 20,
-                                          height: 20,
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF00E5FF),
-                                            shape: BoxShape.circle,
-                                            border: Border.all(color: Colors.white, width: 3),
-                                            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 5)],
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
+                      ),
+                      const SizedBox(width: 48),
+                    ],
+                  ),
+                ),
+                
+                const Spacer(),
+
+                // Map Controls
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 15, bottom: 20),
+                    child: Column(
+                      children: [
+                        _buildMapCircleButton(
+                          _isDarkModeMap ? Icons.light_mode : Icons.dark_mode, 
+                          const Color(0xFF131A26).withOpacity(0.9), 
+                          () {
+                            setState(() {
+                              _isDarkModeMap = !_isDarkModeMap;
+                            });
+                          }, 
+                          iconColor: _isDarkModeMap ? Colors.amber : Colors.white
+                        ),
+                        const SizedBox(height: 15),
+                        _buildMapCircleButton(Icons.add, const Color(0xFF131A26).withOpacity(0.9), () => _animatedMapMove(_mapController.camera.center, _mapController.camera.zoom + 1), iconColor: Colors.white),
+                        const SizedBox(height: 10),
+                        _buildMapCircleButton(Icons.remove, const Color(0xFF131A26).withOpacity(0.9), () => _animatedMapMove(_mapController.camera.center, _mapController.camera.zoom - 1), iconColor: Colors.white),
+                        const SizedBox(height: 20),
+                        _buildMapCircleButton(Icons.my_location, _isDarkModeMap ? const Color(0xFF00E5FF) : const Color(0xFF9D50BB), () => _animatedMapMove(_currentPosition, 16.5), iconColor: _isDarkModeMap ? Colors.black : Colors.white),
                       ],
                     ),
+                  ),
+                ),
 
-                    // OVERLAY: Paparan Loading jika GPS belum ditemui
-                    if (!_hasLocation)
-                      Container(
-                        color: const Color(0xFF131A26).withValues(alpha: 0.8),
-                        child: const Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              CircularProgressIndicator(color: Color(0xFF00E5FF)),
-                              SizedBox(height: 15),
-                              Text('Acquiring GPS Signal...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
+                // --- BOTTOM STATS PANEL (GLASSMORPHISM) ---
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                    child: Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.only(left: 30, right: 30, top: 35, bottom: MediaQuery.of(context).padding.bottom + 20),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                          colors: [const Color(0xFF131A26).withOpacity(0.85), const Color(0xFF090E17).withOpacity(0.95)],
                         ),
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
+                        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1), width: 1)),
                       ),
-
-                    // OVERLAY: Butang Kawalan Peta (Kanan Bawah)
-                    Positioned(
-                      right: 10,
-                      bottom: 10,
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Butang Zoom In
-                          FloatingActionButton.small(
-                            heroTag: 'zoomIn',
-                            backgroundColor: const Color(0xFF1D2633).withValues(alpha: 0.9),
-                            onPressed: () {
-                              _animatedMapMove(_mapController.camera.center, _mapController.camera.zoom + 1);
-                            },
-                            child: const Icon(Icons.add, color: Colors.white),
-                          ),
+                          const Text('TIME', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 2)),
                           const SizedBox(height: 5),
-                          // Butang Zoom Out
-                          FloatingActionButton.small(
-                            heroTag: 'zoomOut',
-                            backgroundColor: const Color(0xFF1D2633).withValues(alpha: 0.9),
-                            onPressed: () {
-                              _animatedMapMove(_mapController.camera.center, _mapController.camera.zoom - 1);
-                            },
-                            child: const Icon(Icons.remove, color: Colors.white),
+                          Text(_formatTime(_seconds), style: const TextStyle(color: Colors.white, fontSize: 65, fontWeight: FontWeight.w900, fontFamily: 'monospace')),
+                          const SizedBox(height: 30),
+
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _buildStatItem('DISTANCE', '${_totalDistanceKm.toStringAsFixed(2)} km', Icons.route),
+                              _buildStatItem('PACE', _currentPace, Icons.speed),
+                              _buildStatItem('CALORIES', '$_totalCalories kcal', Icons.local_fire_department),
+                            ],
                           ),
-                          const SizedBox(height: 15),
-                          // Butang My Location (Recenter)
-                          FloatingActionButton(
-                            heroTag: 'recenter',
-                            backgroundColor: const Color(0xFF00E5FF),
-                            onPressed: () {
-                              _animatedMapMove(_currentPosition, 16.5);
-                            },
-                            child: const Icon(Icons.my_location, color: Colors.black),
-                          ),
+                          const SizedBox(height: 40),
+
+                          // KAWALAN BUTANG
+                          if (!_isRunning && !_isPaused) 
+                            _buildBigButton(text: 'START RUN', color: const Color(0xFF00E5FF), textColor: Colors.black, icon: Icons.play_arrow, onTap: _startCountdown)
+                          else if (_isRunning && !_isPaused) 
+                            _buildBigButton(text: 'PAUSE', color: Colors.amberAccent, textColor: Colors.black, icon: Icons.pause, onTap: _pauseWorkout)
+                          else if (_isPaused)
+                            Row(
+                              children: [
+                                Expanded(child: _buildBigButton(text: 'RESUME', color: const Color(0xFF00E5FF), textColor: Colors.black, icon: Icons.play_arrow, onTap: _resumeWorkout)),
+                                const SizedBox(width: 15),
+                                Expanded(child: _buildBigButton(text: 'FINISH', color: Colors.redAccent, textColor: Colors.white, icon: Icons.stop, onTap: _stopWorkout)),
+                              ],
+                            ),
                         ],
                       ),
                     ),
-                  ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // --- LAYER 3: COUNTDOWN OVERLAY ---
+          if (_isCountingDown)
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  color: const Color(0xFF090E17).withOpacity(0.7),
+                  child: Center(
+                    child: Text(
+                      '$_countdownValue',
+                      style: const TextStyle(
+                        color: Color(0xFF00E5FF), 
+                        fontSize: 150, 
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-
-          // --- BAHAGIAN STATISTIK & KAWALAN (DENGAN SAFE AREA FIX) ---
-          Expanded(
-            flex: 5,
-            child: Container(
-              width: double.infinity,
-              padding: EdgeInsets.only(
-                left: 30, 
-                right: 30, 
-                top: 25, 
-                // PENYELESAIAN OVERLAP: Guna padding bawah peranti + 20px
-                bottom: MediaQuery.of(context).padding.bottom + 20, 
-              ),
-              decoration: const BoxDecoration(
-                color: Color(0xFF131A26),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
-              ),
-              child: Column(
-                children: [
-                  const Text('TIME', style: TextStyle(color: Colors.grey, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                  const SizedBox(height: 5),
-                  Text(
-                    _formatTime(_seconds),
-                    style: const TextStyle(color: Colors.white, fontSize: 60, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
-                  ),
-                  const SizedBox(height: 30),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildStatItem('DISTANCE', '${_totalDistanceKm.toStringAsFixed(2)} km', Icons.route),
-                      _buildStatItem('PACE', _currentPace, Icons.speed),
-                      _buildStatItem('CALORIES', '$_totalCalories kcal', Icons.local_fire_department),
-                    ],
-                  ),
-                  
-                  const Spacer(), 
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (_isRunning || _seconds > 0) ...[
-                        InkWell(
-                          onTap: _isRunning ? _pauseWorkout : _startWorkout,
-                          borderRadius: BorderRadius.circular(40),
-                          child: Container(
-                            width: 70,
-                            height: 70,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1D2633),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
-                            ),
-                            child: Icon(_isRunning ? Icons.pause : Icons.play_arrow, color: Colors.white, size: 30),
-                          ),
-                        ),
-                        const SizedBox(width: 30),
-                        InkWell(
-                          onTap: _stopWorkout,
-                          borderRadius: BorderRadius.circular(40),
-                          child: Container(
-                            width: 70,
-                            height: 70,
-                            decoration: BoxDecoration(
-                              color: Colors.redAccent.withValues(alpha: 0.2),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.redAccent),
-                            ),
-                            child: const Icon(Icons.stop, color: Colors.redAccent, size: 30),
-                          ),
-                        ),
-                      ] else ...[
-                        // Butang Start Besar dengan Animasi Bouncing
-                        GestureDetector(
-                          // Bila jari tekan ke bawah, butang mengecil
-                          onTapDown: (_) => setState(() => _isStartPressed = true),
-                          // Bila jari angkat (berjaya tekan), butang membesar & fungsi berjalan
-                          onTapUp: (_) {
-                            setState(() => _isStartPressed = false);
-                            _startWorkout(); 
-                          },
-                          // Kalau jari tergelincir batal tekan, butang membesar balik
-                          onTapCancel: () => setState(() => _isStartPressed = false),
-                          
-                          child: AnimatedScale(
-                            scale: _isStartPressed ? 0.90 : 1.0, // Mengecil 10% bila ditekan
-                            duration: const Duration(milliseconds: 150),
-                            curve: Curves.easeInOut,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              width: 250,
-                              height: 70,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF00E5FF),
-                                borderRadius: BorderRadius.circular(35),
-                                // Bayang-bayang hilang bila ditekan (menjadikan efek ditekan ke dalam)
-                                boxShadow: _isStartPressed
-                                    ? [] 
-                                    : [BoxShadow(color: const Color(0xFF00E5FF).withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 5))],
-                              ),
-                              child: const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.play_arrow, color: Colors.black, size: 30),
-                                  SizedBox(width: 10),
-                                  Text('START', style: TextStyle(color: Colors.black, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                      ],
-                    
-                  ),
-                ],
-              ),
-            ),
-          ),
         ],
+      ),
+    );
+  }
+
+  // --- WIDGET BANTUAN UI ---
+  Widget _buildMapCircleButton(IconData icon, Color bgColor, VoidCallback onTap, {Color iconColor = Colors.black}) {
+    return Container(
+      decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8, spreadRadius: 2)]),
+      child: CircleAvatar(
+        radius: 22,
+        backgroundColor: bgColor,
+        child: IconButton(icon: Icon(icon, color: iconColor, size: 22), onPressed: onTap),
       ),
     );
   }
@@ -541,12 +589,30 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> with TickerProvid
   Widget _buildStatItem(String label, String value, IconData icon) {
     return Column(
       children: [
-        Icon(icon, color: const Color(0xFF00E5FF), size: 24),
+        Icon(icon, color: _isDarkModeMap ? const Color(0xFF00E5FF) : const Color(0xFF9D50BB), size: 26),
         const SizedBox(height: 8),
         Text(value, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 10, letterSpacing: 1)),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 10, letterSpacing: 1.2)),
       ],
+    );
+  }
+
+  Widget _buildBigButton({required String text, required Color color, required Color textColor, required IconData icon, required VoidCallback onTap}) {
+    return SizedBox(
+      height: 65,
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          elevation: 8,
+          shadowColor: color.withOpacity(0.4),
+        ),
+        onPressed: onTap,
+        icon: Icon(icon, color: textColor, size: 28),
+        label: Text(text, style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+      ),
     );
   }
 }
